@@ -1,0 +1,14 @@
+.containerBox {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    width: 100%;
+    min-height: 100vh;
+}
+
+a {
+    color: white !important;
+}
+
+a:hover{
+    color:gold !important;
+}

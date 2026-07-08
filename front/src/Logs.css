@@ -1,0 +1,9 @@
+.odd-row {
+	background-color: ghostwhite;
+}
+.even-row {
+	background-color: #d1d1d1;
+}
+.buttonLog {
+	margin: 10px !important;
+}
