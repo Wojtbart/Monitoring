@@ -1,157 +1,217 @@
 import { useState } from "react";
 import axios from "axios";
+import { API_BASE } from "./api";
 import Layout from "./Layout";
 import {
-    Box,
-    TextField,
-    Button,
-    Typography,
-    FormLabel,
-    FormControl,
-    FormGroup,
-    FormControlLabel,
-    Checkbox,
+    Box, TextField, Button, Typography, FormControlLabel,
+    Checkbox, Alert, Divider, InputAdornment, IconButton, LinearProgress,
 } from "@mui/material";
 import Card from "@mui/material/Card";
+import PersonAddIcon from "@mui/icons-material/PersonAdd";
+import PersonIcon from "@mui/icons-material/Person";
+import LockIcon from "@mui/icons-material/Lock";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import Visibility from "@mui/icons-material/Visibility";
+import VisibilityOff from "@mui/icons-material/VisibilityOff";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+
+const PASSWORD_RULES = [
+    { test: p => p.length >= 8,          label: "min. 8 znaków" },
+    { test: p => /[A-Z]/.test(p),        label: "wielka litera" },
+    { test: p => /[a-z]/.test(p),        label: "mała litera" },
+    { test: p => /[0-9]/.test(p),        label: "cyfra" },
+    { test: p => /[^A-Za-z0-9]/.test(p), label: "znak specjalny" },
+];
+
+const getStrength = (p) => PASSWORD_RULES.filter(r => r.test(p)).length;
+
+const STRENGTH_LABELS = ["", "Bardzo słabe", "Słabe", "Średnie", "Silne", "Bardzo silne"];
+const STRENGTH_COLORS = ["", "#f44336", "#ff9800", "#ffc107", "#4caf50", "#2e7d32"];
 
 const RegisterPage = () => {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [isAdmin, setIsAdmin] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [status, setStatus] = useState(null);
+    const [loading, setLoading] = useState(false);
 
-    const handleInputChange = (setter) => (event) => {
-        setter(event.target.value);
-    };
-
-    const handleChange = (event) => {
-        setIsAdmin(event.target.checked);
-    };
+    const strength = getStrength(password);
+    const passedRules = PASSWORD_RULES.filter(r => r.test(password));
+    const failedRules = PASSWORD_RULES.filter(r => !r.test(password));
+    const passwordValid = strength === PASSWORD_RULES.length;
 
     const handleRegister = async () => {
-        try {
-            const response = await axios.post(
-                "http://192.168.0.150:5000/register",
-                {
-                    username,
-                    password,
-                    isAdmin,
-                }
-            );
-            console.log("Response: ", response.data);
-            alert("Użytkownik został dodany");
-        } catch (error) {
-            console.error("Error: ", error);
-            alert(error.response.data.message);
+        if (!username.trim() || !password.trim()) {
+            setStatus({ type: "error", message: "Wypełnij wszystkie pola." });
+            return;
         }
+        if (!passwordValid) {
+            setStatus({ type: "error", message: `Hasło nie spełnia wymagań: ${failedRules.map(r => r.label).join(", ")}.` });
+            return;
+        }
+        setLoading(true);
+        setStatus(null);
+        try {
+            await axios.post(`${API_BASE}/register`, { username, password, isAdmin });
+            setStatus({ type: "success", message: `Użytkownik "${username}" został dodany.` });
+            setUsername("");
+            setPassword("");
+            setIsAdmin(false);
+        } catch (error) {
+            setStatus({ type: "error", message: error.response?.data?.message || "Błąd serwera." });
+        }
+        setLoading(false);
     };
 
     return (
         <Layout>
-            <Card
-                sx={{
-                    width: "30vw",
-                    margin: "10px auto",
-                    borderRadius: "20px",
-                    p: 5,
-                    textAlign: "center",
-                }}
-            >
-                <Typography
-                    component="h2"
-                    variant="h4"
-                    sx={{
-                        borderRadius: "30px",
-                        fontSize: "48px",
-                        color: "black",
-                        mb: 5,
-                        fontWeight: 700,
-                        textDecoration: "underline",
-                        textDecorationColor: "gold",
-                    }}
-                >
-                    DODAJ UŻYTKOWNIKA
-                </Typography>
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "flex-start", pt: 4 }}>
+                <Card sx={{ width: 420, borderRadius: 3, overflow: "hidden", boxShadow: 4 }}>
 
-                <Box
-                    component="form"
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        width: "100%",
-                    }}
-                    noValidate
-                    autoComplete="off"
-                >
-                    <FormControl fullWidth sx={{ mb: 2 }}>
-                        <FormLabel
-                            htmlFor="username"
-                            sx={{ color: "white", mb: 1, textAlign: "left" }}
-                        ></FormLabel>
+                    {/* Header */}
+                    <Box sx={{
+                        bgcolor: "#1a237e", px: 4, py: 3,
+                        display: "flex", alignItems: "center", gap: 1.5,
+                    }}>
+                        <PersonAddIcon sx={{ color: "white", fontSize: "1.8rem" }} />
+                        <Box>
+                            <Typography variant="h6" fontWeight="bold" color="white">
+                                Dodaj użytkownika
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: "#9fa8da" }}>
+                                Tylko administrator może dodawać konta
+                            </Typography>
+                        </Box>
+                    </Box>
+
+                    <Box sx={{ px: 4, py: 3, display: "flex", flexDirection: "column", gap: 2 }}>
+
+                        {status && (
+                            <Alert
+                                severity={status.type}
+                                icon={status.type === "success" ? <CheckCircleIcon /> : undefined}
+                                onClose={() => setStatus(null)}
+                            >
+                                {status.message}
+                            </Alert>
+                        )}
+
                         <TextField
-                            required
-                            id="username"
-                            variant="outlined"
-                            placeholder="Wpisz nazwę użytkownika"
                             label="Nazwa użytkownika"
-                            onChange={handleInputChange(setUsername)}
-                            margin="normal"
+                            value={username}
+                            onChange={e => setUsername(e.target.value)}
+                            fullWidth
+                            size="small"
                             autoFocus
-                            InputLabelProps={{ style: { fontSize: 13 } }}
+                            autoComplete="off"
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <PersonIcon fontSize="small" color="action" />
+                                    </InputAdornment>
+                                ),
+                            }}
                         />
-                        <FormLabel
-                            htmlFor="password"
-                            sx={{ color: "white", mb: 1, textAlign: "left" }}
-                        ></FormLabel>
-                        <TextField
-                            required
-                            id="password"
-                            variant="outlined"
-                            placeholder="Wpisz hasło"
-                            label="Hasło"
-                            onChange={handleInputChange(setPassword)}
-                            margin="normal"
-                            InputLabelProps={{ style: { fontSize: 13 } }}
-                        />
-                    </FormControl>
 
-                    <FormGroup>
+                        <TextField
+                            label="Hasło"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            type={showPassword ? "text" : "password"}
+                            fullWidth
+                            size="small"
+                            autoComplete="new-password"
+                            onKeyDown={e => e.key === "Enter" && handleRegister()}
+                            error={password.length > 0 && !passwordValid}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <LockIcon fontSize="small" color="action" />
+                                    </InputAdornment>
+                                ),
+                                endAdornment: (
+                                    <InputAdornment position="end">
+                                        <IconButton size="small" onClick={() => setShowPassword(p => !p)} edge="end">
+                                            {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                                        </IconButton>
+                                    </InputAdornment>
+                                ),
+                            }}
+                        />
+
+                        {password.length > 0 && (
+                            <Box sx={{ mt: -1 }}>
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+                                    <LinearProgress
+                                        variant="determinate"
+                                        value={(strength / PASSWORD_RULES.length) * 100}
+                                        sx={{
+                                            flex: 1, height: 6, borderRadius: 3,
+                                            bgcolor: "#e0e0e0",
+                                            "& .MuiLinearProgress-bar": { bgcolor: STRENGTH_COLORS[strength] },
+                                        }}
+                                    />
+                                    <Typography variant="caption" sx={{ color: STRENGTH_COLORS[strength], fontWeight: "bold", minWidth: 90 }}>
+                                        {STRENGTH_LABELS[strength]}
+                                    </Typography>
+                                </Box>
+                                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                                    {PASSWORD_RULES.map(rule => {
+                                        const ok = rule.test(password);
+                                        return (
+                                            <Typography key={rule.label} variant="caption" sx={{
+                                                color: ok ? "#2e7d32" : "#9e9e9e",
+                                                fontSize: "0.68rem",
+                                                display: "flex", alignItems: "center", gap: 0.25,
+                                            }}>
+                                                {ok ? "✓" : "○"} {rule.label}
+                                            </Typography>
+                                        );
+                                    })}
+                                </Box>
+                            </Box>
+                        )}
+
+                        <Divider />
+
                         <FormControlLabel
                             control={
                                 <Checkbox
                                     checked={isAdmin}
-                                    onChange={handleChange}
+                                    onChange={e => setIsAdmin(e.target.checked)}
+                                    color="warning"
                                 />
                             }
-                            label="Uprawnienia admininistratora"
+                            label={
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+                                    <AdminPanelSettingsIcon fontSize="small" color={isAdmin ? "warning" : "disabled"} />
+                                    <Typography variant="body2" color={isAdmin ? "warning.main" : "text.secondary"} fontWeight={isAdmin ? "bold" : "normal"}>
+                                        Uprawnienia administratora
+                                    </Typography>
+                                </Box>
+                            }
                         />
-                    </FormGroup>
-                    <Button
-                        fullWidth
-                        variant="contained"
-                        type="button"
-                        onClick={handleRegister}
-                        sx={{
-                            width: "40%",
-                            padding: "0.75rem",
-                            fontSize: "18px",
-                            borderRadius: "20px",
-                            backgroundColor: "white",
-                            color: "#05070A",
-                            border: "2px solid #05070A",
-                            mb: 3,
-                            transition: ".2s",
-                            "&:hover": {
-                                backgroundColor: "#1A1D21",
-                                color: "orange",
-                                borderColor: "#FFD700",
-                            },
-                        }}
-                    >
-                        Dodaj użytkownika
-                    </Button>
-                </Box>
-            </Card>
+
+                        {isAdmin && (
+                            <Alert severity="warning" sx={{ py: 0.5 }}>
+                                Administrator ma dostęp do wszystkich funkcji systemu.
+                            </Alert>
+                        )}
+
+                        <Button
+                            variant="contained"
+                            fullWidth
+                            onClick={handleRegister}
+                            disabled={loading}
+                            startIcon={<PersonAddIcon />}
+                            sx={{ py: 1.2, fontWeight: "bold", bgcolor: "#1a237e", "&:hover": { bgcolor: "#283593" } }}
+                        >
+                            {loading ? "Dodawanie..." : "Dodaj użytkownika"}
+                        </Button>
+                    </Box>
+                </Card>
+            </Box>
         </Layout>
     );
 };

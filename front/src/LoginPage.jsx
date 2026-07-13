@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import axios from "axios";
+import { API_BASE } from "./api";
 import { useNavigate } from "react-router-dom";
 import {
     Box,
@@ -24,14 +25,14 @@ const LoginPage = () => {
         event.preventDefault();
         try {
             const response = await axios.post(
-                "http://192.168.0.150:5000/login",
+                `${API_BASE}/login`,
                 {
                     username,
                     password,
                 }
             );
             localStorage.setItem("JWT", response.data.accessToken);
-            navigate("/home");
+            navigate("/rzut");
         } catch (error) {
             console.error("Error: ", error);
             alert("Niepoprawy login lub hasło");

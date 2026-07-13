@@ -1,227 +1,252 @@
-from flask import Flask, Response ,request, jsonify,send_from_directory
+import os
+from flask import Flask, Response, request, jsonify, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
-import os
-# from camera import Camera
 from models import db, Users, PhoneNumbers, Settings, Logs, Layout
 from pythonping import ping
 from werkzeug.security import generate_password_hash, check_password_hash
-#from picamera2 import Picamera2
-import cv2
 from datetime import datetime
-#from picamera2.encoders import H264Encoder
-from ffmpg import convert_to_mp4
+from dotenv import load_dotenv
 
+from camera import Camera
+from ffmpg import convert_to_mp4
 from sensors import Sensor
+
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
-app.config['SQLALCHEMY_DATABASE_URI'] =   'postgresql://postgres:postgres@localhost/postgres_db' #'postgresql://neondb_owner:n2Udrik0Kmjw@ep-falling-tooth-a5hv9ol0.us-east-2.aws.neon.tech/neondb?sslmode=require'
-app.config["JWT_SECRET_KEY"] = '5ff6666a14ce8b7c9872454853362a9c9cb081f8d2727059cb0b69fb24ed27af'
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///monitoring.db')
+app.config['JWT_SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-change-in-production')
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db.init_app(app)
 jwt = JWTManager(app)
 
-counter = 0
+VIDEOS_DIR = os.getenv('VIDEOS_DIR', 'videos')
+os.makedirs(VIDEOS_DIR, exist_ok=True)
+
+camera = Camera()
+sensor = None
+
+
+def init_sensor():
+    global sensor
+    with app.app_context():
+        settings = Settings.get_all_settings()
+        phone_numbers = PhoneNumbers.get_all_phone_numbers()
+    sensor = Sensor(app, settings, phone_numbers, camera)
 
 
 @app.route('/')
 def hello_world():
-    return 'Hello, World!'
+    return 'Monitoring System API'
+
 
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
-    isadmin = data.get('isAdmin')
+    isadmin = data.get('isAdmin', False)
+    if not username or not password:
+        return jsonify({'message': 'Brak danych'}), 400
+    if Users.get_user_by_username(username):
+        return jsonify({'message': 'Użytkownik o takim loginie istnieje'}), 400
     hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-    print(username + ' ' + password+ ' ' + hashed_password)
-    user = Users.get_user_by_username(username)
-    if user is None:
-        Users.add_user(username, hashed_password, isadmin)
-        return jsonify({'message':'User created successfully'}), 200
-    else:
-        print('User already exists')
-        return jsonify({'message': 'Użytkownik o takin loginie istniej'}), 400
+    Users.add_user(username, hashed_password, isadmin)
+    return jsonify({'message': 'Użytkownik utworzony'}), 200
+
 
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
-    print(username + ' ' + password)
     user = Users.get_user_by_username(username)
-    print(user)
-    print(str(user.id) + " " + user.username + " " + user.password)
-    if user is not None :#and  check_password_hash(user.password, password):
-        accessToken = create_access_token(identity=username)
-        # print(accessToken)
-        return jsonify({'accessToken':accessToken}), 200
-    else:
-        print('Invalid credentials')
-        return jsonify({'message':'Invalid credentials'}), 401
-    
+    if user is None or not check_password_hash(user.password, password):
+        return jsonify({'message': 'Nieprawidłowe dane logowania'}), 401
+    access_token = create_access_token(identity=username)
+    return jsonify({'accessToken': access_token}), 200
+
+
 @app.route('/userInfo', methods=['GET'])
 @jwt_required()
 def user_info():
     current_user = get_jwt_identity()
-    print(current_user)
     is_admin = Users.get_user_by_username(current_user).isadmin
-    return jsonify({'currentUser':current_user, 'isAdmin':is_admin}), 200
-    
+    return jsonify({'currentUser': current_user, 'isAdmin': is_admin}), 200
+
+
 @app.route('/saveLayout', methods=['POST'])
+@jwt_required()
 def save_layout():
     data = request.get_json()
     if not data:
-        return jsonify({"error": "No data"}), 400
-
+        return jsonify({'error': 'Brak danych'}), 400
     layout = Layout(data=data)
     db.session.add(layout)
     db.session.commit()
+    return jsonify({'message': 'Layout zapisany', 'id': layout.id}), 201
 
-    return jsonify({"message": "Layout saved", "id": layout.id}), 201
 
 @app.route('/getLayout/<int:layout_id>', methods=['GET'])
 def get_layout(layout_id):
-    layout = Layout.query.get(layout_id)
+    layout = db.session.get(Layout, layout_id)
     if not layout:
-        return jsonify({"error": "Layout not found"}), 404
-
+        return jsonify({'error': 'Layout nie znaleziony'}), 404
     return jsonify(layout.data), 200
-    
-camera = None
-#camera.configure(camera.create_video_configuration(main={"format": 'XRGB8888',"size": (640, 480)})) #'XRGB8888'
-#camera.start()
+
+
+@app.route('/updateLayout/<int:layout_id>', methods=['PUT'])
+@jwt_required()
+def update_layout(layout_id):
+    layout = db.session.get(Layout, layout_id)
+    if not layout:
+        return jsonify({'error': 'Layout nie znaleziony'}), 404
+    data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Brak danych'}), 400
+    layout.data = data
+    db.session.commit()
+    return jsonify({'message': 'Layout zaktualizowany'}), 200
+
+
 def generate_frames():
-    # camera.start()
-    # camera = Picamera2()
-    while True:
-        frame = None #camera.capture_array()
-        ret, buffer = cv2.imencode('.jpg', frame)
-        frame = buffer.tobytes()
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+    for frame_bytes in camera.stream():
+        yield frame_bytes
+
 
 @app.route('/captureVideo')
 def capture_video():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+
 @app.route('/startRecording', methods=['POST'])
+@jwt_required()
 def start_recording():
     if sensor.is_recording:
         return jsonify({'message': 'Kamera już nagrywa'}), 403
-    encoder = None #H264Encoder(bitrate=10000000)
-    videoName = 'Video_' + datetime.now().strftime('Date_%Y_%m_%d_Time_%H_%M_%S')
-    #camera.start_recording(encoder,'videos/'+videoName+'.h264')
+    video_name = camera.start_recording()
+    if video_name is None:
+        return jsonify({'message': 'Nie można uruchomić nagrywania'}), 500
     sensor.is_user_recording = True
-    return jsonify({'message': 'Recording started', 'videoName': videoName}), 200
+    sensor.video_name = video_name.replace('.mp4', '')
+    return jsonify({'message': 'Nagrywanie rozpoczęte', 'videoName': video_name}), 200
+
 
 @app.route('/stopRecording', methods=['POST'])
+@jwt_required()
 def stop_recording():
-    data = request.get_json()
-    video_name = data.get('videoName')
-    #camera.stop_recording()
-    #camera.start()
+    camera.stop_recording()
     sensor.is_user_recording = False
-    convert_to_mp4('videos/'+str(video_name)+'.h264', 'videos/'+str(video_name)+'.mp4')
-    return jsonify({'message': 'Recording stopped'}), 200
+    return jsonify({'message': 'Nagrywanie zatrzymane'}), 200
+
 
 @app.route('/videos', methods=['GET'])
-# @jwt_required()
-def getVideos():
-    videos = [f for f in os.listdir('videos') if f.endswith(('.mp4', '.avi', '.mov'))]
-    url_videos = [{'name': video, 'url': f'http://192.168.0.150:5000/videos/{video}'} for video in videos]
+@jwt_required()
+def get_videos():
+    videos = [f for f in os.listdir(VIDEOS_DIR) if f.endswith(('.mp4', '.avi', '.mov'))]
+    base_url = request.host_url.rstrip('/')
+    url_videos = [{'name': v, 'url': f'{base_url}/videos/{v}'} for v in videos]
     return jsonify(url_videos), 200
 
+
 @app.route('/videos/<video_name>', methods=['GET'])
-# @jwt_required()
+@jwt_required()
 def get_video(video_name):
-    return send_from_directory('videos', video_name,mimetype='video/mp4')
+    return send_from_directory(VIDEOS_DIR, video_name, mimetype='video/mp4')
+
 
 @app.route('/addPhoneNumber', methods=['POST'])
-# @jwt_required()
+@jwt_required()
 def add_phone_number():
     data = request.get_json()
     phone_number = data.get('phone_number')
-    if phone_number is None:
-        return jsonify({'message': 'Phone number is required'}), 400
+    if not phone_number:
+        return jsonify({'message': 'Numer telefonu wymagany'}), 400
     PhoneNumbers.add_phone_number(phone_number)
-    return jsonify({'message': 'Phone number added successfully'}), 200
+    return jsonify({'message': 'Numer telefonu dodany'}), 200
+
 
 @app.route('/deletePhoneNumber', methods=['POST'])
-# @jwt_required()
+@jwt_required()
 def delete_phone_number():
     data = request.get_json()
     phone_number = data.get('phone_number')
-    if phone_number is None:
-        return jsonify({'message': 'Phone number is required'}), 400
+    if not phone_number:
+        return jsonify({'message': 'Numer telefonu wymagany'}), 400
     PhoneNumbers.delete_phone_number(phone_number)
-    return jsonify({'message': 'Phone number deleted successfully'}), 200
+    return jsonify({'message': 'Numer telefonu usunięty'}), 200
+
 
 @app.route('/saveSettings', methods=['POST'])
-# @jwt_required()
+@jwt_required()
 def save_settings():
     data = request.get_json()
-    id = data.get('id')
-    min_temperature = data.get('min_temperature')
-    max_temperature = data.get('max_temperature')
-    min_humidity = data.get('min_humidity')
-    max_humidity = data.get('max_humidity')
-    recording_seconds = data.get('recording_seconds')
-    evening_test_time = data.get('evening_test_time')
-    morning_test_time = data.get('morning_test_time')
-    if(Settings.update_settings(id, min_temperature, max_temperature, min_humidity, max_humidity, recording_seconds, evening_test_time, morning_test_time)):
+    ok = Settings.update_settings(
+        data.get('id'),
+        data.get('min_temperature'),
+        data.get('max_temperature'),
+        data.get('min_humidity'),
+        data.get('max_humidity'),
+        data.get('recording_seconds'),
+        data.get('evening_test_time'),
+        data.get('morning_test_time'),
+    )
+    if ok:
         sensor.update_settings(Settings.get_all_settings())
-        return jsonify({'message': 'Settings updated successfully'}), 200
-    return jsonify({'message': 'Something went wrong'}), 400
+        return jsonify({'message': 'Ustawienia zapisane'}), 200
+    return jsonify({'message': 'Błąd zapisu ustawień'}), 400
+
 
 @app.route('/settingsAndPhoneNumbers', methods=['GET'])
-# @jwt_required()
 def get_settings():
-    phone_numbers = PhoneNumbers.get_all_phone_numbers()
-    # phone_numbers = [phone_number.phone_number for phone_number in phone_numbers]
-    settings = Settings.get_all_settings()
-    return jsonify({'phone_numbers': phone_numbers, 'settings': settings}), 200
+    return jsonify({
+        'phone_numbers': PhoneNumbers.get_all_phone_numbers(),
+        'settings': Settings.get_all_settings(),
+    }), 200
+
 
 @app.route('/phoneNumbers', methods=['GET'])
 @jwt_required()
-def get_get_phone_numbers():
-    phone_numbers = PhoneNumbers.get_all_phone_numbers()
-    return jsonify({'phone_numbers': phone_numbers}), 200
+def get_phone_numbers():
+    return jsonify({'phone_numbers': PhoneNumbers.get_all_phone_numbers()}), 200
+
 
 @app.route('/settings', methods=['GET'])
-# @jwt_required()
 def get_settings_only():
-    settings = Settings.get_all_settings()
-    return jsonify({'settings': settings}), 200
+    return jsonify({'settings': Settings.get_all_settings()}), 200
+
 
 @app.route('/logs', methods=['GET'])
 @jwt_required()
 def get_logs():
-    logs = Logs.get_all_logs()
-    print(logs)
-    return jsonify({'logs': logs}), 200
+    return jsonify({'logs': Logs.get_all_logs()}), 200
+
 
 @app.route('/deleteLogs', methods=['POST'])
 @jwt_required()
 def delete_logs():
     Logs.remove_all_logs()
-    return jsonify({'message': 'Logs deleted successfully'}), 200
+    return jsonify({'message': 'Logi usunięte'}), 200
+
 
 @app.route('/realTimeData', methods=['GET'])
-# @jwt_required()
 def get_real_time_data():
-    data =sensor.get_current_data()
-    return jsonify(data), 200
+    return jsonify(sensor.get_current_data()), 200
 
-@app.route('/ping/<adress>', methods=['GET'])
-# @jwt_required()
-def ping_host(adress):
-    response = ping(adress, count=1)
-    message = str(response).split("\r")[0]
-    return jsonify({'message': message}), 200 
+
+@app.route('/ping/<path:address>', methods=['GET'])
+@jwt_required()
+def ping_host(address):
+    response = ping(address, count=4)
+    messages = [str(r).split('\r')[0] for r in response]
+    return jsonify({'messages': messages}), 200
+
 
 if __name__ == '__main__':
     with app.app_context():
-        sensor = Sensor(app,Settings.get_all_settings(), PhoneNumbers.get_all_phone_numbers(), camera)
+        db.create_all()
+    init_sensor()
     app.run('0.0.0.0', 5000, debug=False)

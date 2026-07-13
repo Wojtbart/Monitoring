@@ -1,0 +1,19 @@
+# Core
+flask>=3.0.0
+flask-sqlalchemy>=3.1.0
+flask-jwt-extended>=4.6.0
+flask-cors>=4.0.0
+werkzeug>=3.0.0
+python-dotenv>=1.0.0
+
+# Camera & video
+opencv-python-headless>=4.9.0
+ffmpeg-python>=0.2.0
+
+# Network tools
+pythonping>=1.1.4
+
+# RPi hardware (odkomentuj na Raspberry Pi)
+# RPi.GPIO>=0.7.1
+# picamera2>=0.3.19
+# adafruit-circuitpython-dht>=4.0.0

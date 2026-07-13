@@ -10,6 +10,8 @@ import SavedVideos from "./SavedVideos";
 import Settings from "./Settings";
 import Logs from "./Logs";
 import Diagram from "./Diagram";
+import ServerRack from "./ServerRack";
+import FloorPlan from "./FloorPlan";
 
 function App() {
     return (
@@ -23,7 +25,10 @@ function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/logs" element={<Logs />} />
                 <Route path="/diagram" element={<Diagram />} />
-                <Route path="/" element={<Home />} />
+                <Route path="/rack/:rackId" element={<ServerRack />} />
+                <Route path="/floorplan" element={<FloorPlan />} />
+                <Route path="/rzut" element={<FloorPlan />} />
+                <Route path="/" element={<FloorPlan />} />
             </Routes>
         </Router>
     );

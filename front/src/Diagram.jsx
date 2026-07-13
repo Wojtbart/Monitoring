@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { API_BASE } from "./api";
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -101,7 +102,7 @@ function Flow() {
     const layout = { nodes, edges };
 
     try {
-      const res = await fetch("http://192.168.0.150:5000/saveLayout", {
+      const res = await fetch(`${API_BASE}/saveLayout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(layout),
@@ -118,7 +119,7 @@ function Flow() {
 
   const loadLayoutById = async (layoutId) => {
   try {
-    const res = await fetch(`http://localhost:5000/getLayout/${layoutId}`);
+    const res = await fetch(`${API_BASE}/getLayout/${layoutId}`);
     if (!res.ok) throw new Error("Błąd pobierania layoutu");
 
     const data = await res.json();
@@ -178,7 +179,7 @@ function Flow() {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeClick={onNodeClick}saveLayout
+        onNodeClick={onNodeClick}
         onConnect={onConnect}
         fitView
         onEdgesDelete={(deleted) =>setEdges((eds) => eds.filter((e) => !deleted.some((d) => d.id === e.id)))}

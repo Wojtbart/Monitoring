@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { AdminProvider } from "./AdminContext";
 import axios from "axios";
+import { API_BASE } from "./api";
 import {
     AppBar,
     Toolbar,
@@ -12,7 +13,7 @@ import {
     Box,
     Drawer,
     List,
-    ListItem,
+    ListItemButton,
     ListItemText,
     IconButton,
 } from "@mui/material";
@@ -28,6 +29,8 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import MapIcon from '@mui/icons-material/Map';
+import DnsIcon from '@mui/icons-material/Dns';
 import HomeIcon from "@mui/icons-material/Home";
 import "./Layout.css";
 
@@ -52,7 +55,7 @@ const Layout = ({ children }) => {
             const fetchUser = async () => {
                 try {
                     const response = await axios.get(
-                        "http://192.168.0.150:5000/userInfo",
+                        `${API_BASE}/userInfo`,
                         {
                             headers: {
                                 "Content-Type": "application/json",
@@ -80,7 +83,7 @@ const Layout = ({ children }) => {
     };
 
     const handleHome = async () => {
-        navigate("/");
+        navigate("/home");
     };
 
     const handleCamera = async () => {
@@ -104,6 +107,14 @@ const Layout = ({ children }) => {
 
     const handleDiagram = () => {
         navigate("/diagram");
+    };
+
+    const handleRack = () => {
+        navigate("/rack");
+    };
+
+    const handleFloorPlan = () => {
+        navigate("/rzut");
     };
 
     const handleRegister = () => {
@@ -187,76 +198,34 @@ const Layout = ({ children }) => {
                             </DrawerHeader>
                             <Divider />
                             <List>
-                                <ListItem
-                                    button
-                                    onClick={handleHome}
-                                    sx={{ cursor: "pointer" }}
-                                >
-                                    <ListItemIcon>
-                                        <HomeIcon />
-                                    </ListItemIcon>
-                                    <ListItemText primary="Strona główna" />
-                                </ListItem>
-                                <ListItem
-                                    button
-                                    onClick={handleSavedVideos}
-                                    sx={{ cursor: "pointer" }}
-                                >
-                                    <ListItemIcon>
-                                        <SaveAltIcon />
-                                    </ListItemIcon>
+                                <ListItemButton onClick={handleHome}>
+                                    <ListItemIcon><HomeIcon /></ListItemIcon>
+                                    <ListItemText primary="Test urządzenia" />
+                                </ListItemButton>
+                                <ListItemButton onClick={handleSavedVideos}>
+                                    <ListItemIcon><SaveAltIcon /></ListItemIcon>
                                     <ListItemText primary="Zapisane wideo" />
-                                </ListItem>
-                                <ListItem
-                                    button
-                                    onClick={handleCamera}
-                                    sx={{ cursor: "pointer" }}
-                                >
-                                    <ListItemIcon>
-                                        <VideocamIcon />
-                                    </ListItemIcon>
+                                </ListItemButton>
+                                <ListItemButton onClick={handleCamera}>
+                                    <ListItemIcon><VideocamIcon /></ListItemIcon>
                                     <ListItemText primary="Widok z kamery" />
-                                </ListItem>
-                                <ListItem
-                                    button
-                                    onClick={handleSettings}
-                                    sx={{ cursor: "pointer" }}
-                                >
-                                    <ListItemIcon>
-                                        <SettingsIcon />
-                                    </ListItemIcon>
+                                </ListItemButton>
+                                <ListItemButton onClick={handleSettings}>
+                                    <ListItemIcon><SettingsIcon /></ListItemIcon>
                                     <ListItemText primary="Ustawienia systemu" />
-                                </ListItem>
-                                <ListItem
-                                    button
-                                    onClick={handleRegister}
-                                    sx={{ cursor: "pointer" }}
-                                >
-                                    <ListItemIcon>
-                                        <PersonAddIcon />
-                                    </ListItemIcon>
+                                </ListItemButton>
+                                <ListItemButton onClick={handleRegister}>
+                                    <ListItemIcon><PersonAddIcon /></ListItemIcon>
                                     <ListItemText primary="Dodaj użytkownika" />
-                                </ListItem>
-                                <ListItem
-                                    button
-                                    onClick={handleLogs}
-                                    sx={{ cursor: "pointer" }}
-                                >
-                                    <ListItemIcon>
-                                        <NewspaperIcon />
-                                    </ListItemIcon>
+                                </ListItemButton>
+                                <ListItemButton onClick={handleLogs}>
+                                    <ListItemIcon><NewspaperIcon /></ListItemIcon>
                                     <ListItemText primary="Logi z systemu" />
-                                </ListItem>
-                                <ListItem
-                                    button
-                                    onClick={handleDiagram}
-                                    sx={{ cursor: "pointer" }}
-                                >
-                                    <ListItemIcon>
-                                        <AccountTreeIcon/>
-                                    </ListItemIcon>
-                                    <ListItemText primary="Mapa podłączeń" />
-                                </ListItem>
+                                </ListItemButton>
+                                <ListItemButton onClick={handleFloorPlan}>
+                                    <ListItemIcon><MapIcon /></ListItemIcon>
+                                    <ListItemText primary="Rzut serwerowni" />
+                                </ListItemButton>
                             </List>
                             <Divider />
                         </Drawer>
@@ -269,12 +238,12 @@ const Layout = ({ children }) => {
                         sx={{
                             py: 2,
                             textAlign: "center",
-                            backgroundColor: "#031322",
+                            backgroundColor: "#0f2a4a",
                         }}
                         className="footer"
                     >
                         <Typography variant="body2" color="white">
-                            2024 Monitoring System
+                            {new Date().getFullYear()} Monitoring System
                         </Typography>
                     </Box>
                 </div>

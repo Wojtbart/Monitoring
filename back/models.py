@@ -1,7 +1,8 @@
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy() 
-class Users(db.Model):  # albo dodać __tablename__ = 'users' i może zostać class User
+class Users(db.Model):
+    __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), unique=False, nullable=False)
@@ -45,7 +46,7 @@ class PhoneNumbers(db.Model):
     
     @staticmethod
     def delete_phone_number(phone_number):
-        phone_number = PhoneNumbers.query.get(phone_number)
+        phone_number = db.session.get(PhoneNumbers, phone_number)
         if phone_number:
             db.session.delete(phone_number)
             db.session.commit()
@@ -86,7 +87,7 @@ class Settings(db.Model):
     
     @staticmethod
     def update_settings(id, min_temperature, max_temperature, min_humidity, max_humidity, recording_seconds, evening_test_time, morning_test_time):
-        settings = Settings.query.get(id)
+        settings = db.session.get(Settings, id)
         if settings:
             settings.min_temperature = min_temperature
             settings.max_temperature = max_temperature

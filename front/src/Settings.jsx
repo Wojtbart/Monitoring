@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { API_BASE } from "./api";
 import dayjs from "dayjs";
 import { useNavigate } from "react-router-dom";
 import Layout from "./Layout";
@@ -72,7 +73,7 @@ const Settings = () => {
     const addPhoneNumber = async () => {
         try {
             const response = await axios.post(
-                "http://192.168.0.150:5000/addPhoneNumber",
+                `${API_BASE}/addPhoneNumber`,
                 {
                     phone_number: phoneNumber,
                 },
@@ -93,7 +94,7 @@ const Settings = () => {
     const saveSettings = async () => {
         try {
             const response = await axios.post(
-                "http://192.168.0.150:5000/saveSettings",
+                `${API_BASE}/saveSettings`,
                 {
                     id: id,
                     min_temperature: minTemperature,
@@ -123,7 +124,7 @@ const Settings = () => {
     const fetchSettingsAndPhoneNumbers = async () => {
         try {
             const response = await axios.get(
-                "http://192.168.0.150:5000/settingsAndPhoneNumbers",
+                `${API_BASE}/settingsAndPhoneNumbers`,
                 {
                     headers: {
                         "Content-Type": "application/json",
@@ -138,7 +139,6 @@ const Settings = () => {
     };
 
     useEffect(() => {
-        console.log(acccesToken);
         if (acccesToken === null) {
             navigate("/loginPage");
             return;
@@ -170,7 +170,7 @@ const Settings = () => {
     const deleteNumber = async (phoneNumber) => {
         try {
             const response = await axios.post(
-                "http://192.168.0.150:5000/deletePhoneNumber",
+                `${API_BASE}/deletePhoneNumber`,
                 {
                     phone_number: phoneNumber,
                 },
@@ -191,7 +191,7 @@ const Settings = () => {
     const fetchPhoneNumbers = async () => {
         try {
             const response = await axios.get(
-                "http://192.168.0.150:5000/phoneNumbers",
+                `${API_BASE}/phoneNumbers`,
                 {
                     headers: {
                         "Content-Type": "application/json",
@@ -208,7 +208,7 @@ const Settings = () => {
     const fetchSettings = async () => {
         try {
             const response = await axios.get(
-                "http://192.168.0.150:5000/settings",
+                `${API_BASE}/settings`,
                 {
                     headers: {
                         "Content-Type": "application/json",
@@ -223,8 +223,6 @@ const Settings = () => {
     };
 
     useEffect(() => {
-        console.log("asdasdsdasdsd");
-        console.log(shouldUpdatePhoneNumbers);
         if (shouldUpdatePhoneNumbers) {
             const getPhoneNumbers = async () => {
                 const response = await fetchPhoneNumbers();

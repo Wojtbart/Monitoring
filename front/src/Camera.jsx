@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_BASE } from "./api";
 import { Button } from "@mui/material";
 import Layout from "./Layout";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -19,7 +20,7 @@ const Camera = () => {
     const handleStartRecording = async () => {
         try {
             const response = await axios.post(
-                "http://192.168.0.150:5000/startRecording",
+                `${API_BASE}/startRecording`,
                 {},
                 {
                     headers: {
@@ -42,7 +43,7 @@ const Camera = () => {
     const handleStopRecording = async () => {
         try {
             await axios.post(
-                "http://192.168.0.150:5000/stopRecording",
+                `${API_BASE}/stopRecording`,
                 {
                     videoName,
                 },
@@ -84,7 +85,7 @@ const Camera = () => {
                                         "14px 15px 15px rgba(0, 0, 0, 0.5)",
                                 }}
                                 slot="media"
-                                src="http://192.168.0.150:5000/captureVideo"
+                                src={`${API_BASE}/captureVideo`}
                                 playsInline
                                 id="camera-image"
                             />

@@ -1,60 +1,64 @@
 import cv2
+import sys
 from datetime import datetime
+
 
 class Camera:
     def __init__(self):
-        self.camera = None
-        self.isCameraOpened = False
-        self.isRecording = False
-        self.outputFile = None
+        self._cap = None
+        self._writer = None
+        self.is_recording = False
+        self._videos_dir = 'videos'
 
-    def open_camera(self):
-        if not self.isCameraOpened:
-            self.camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-            self.isCameraOpened = self.camera.isOpened()
-
-    def release_camera(self):
-        if self.isCameraOpened:
-            self.camera.release()
-            self.camera = None
-            self.isCameraOpened = False
+    def _open(self):
+        if self._cap is not None:
+            return
+        # CAP_DSHOW tylko na Windows (szybszy init)
+        if sys.platform == 'win32':
+            self._cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+        else:
+            self._cap = cv2.VideoCapture(0)
 
     def start_recording(self):
-        if not self.isRecording and self.isCameraOpened:
-            videoName = 'Video_' + datetime.now().strftime('Date_%Y_%m_%d_Time_%H_%M_%S') + '.mp4'
-            self.outputFile = cv2.VideoWriter("videos/" + videoName, cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), 20.0, (640, 480))
-            self.isRecording = True
-            return videoName
-        return None
+        if self.is_recording:
+            return None
+        self._open()
+        if not self._cap or not self._cap.isOpened():
+            return None
+        video_name = 'Video_' + datetime.now().strftime('Date_%Y_%m_%d_Time_%H_%M_%S') + '.mp4'
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        self._writer = cv2.VideoWriter(f'{self._videos_dir}/{video_name}', fourcc, 20.0, (640, 480))
+        self.is_recording = True
+        return video_name
 
     def stop_recording(self):
-        if self.isRecording:
-            self.outputFile.release()
-            self.isRecording = False
+        if not self.is_recording:
+            return
+        if self._writer:
+            self._writer.release()
+            self._writer = None
+        self.is_recording = False
 
     def stream(self):
-        if self.camera is None or not self.isCameraOpened:
-            self.open_camera()
-
-        if not self.isCameraOpened:
-            print("Camera could not be opened.")
+        self._open()
+        if not self._cap or not self._cap.isOpened():
             return
 
-        print("Streaming started")
         try:
-            while self.isCameraOpened:
-                success, frame = self.camera.read()
-                if success:
-                    if self.isRecording:
-                        self.outputFile.write(frame)
-
-                    ret, buffer = cv2.imencode('.jpg', frame)
-                    frame = buffer.tobytes()
-                    yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-                else:
-                    print("Failed to read frame.")
+            while True:
+                ok, frame = self._cap.read()
+                if not ok:
                     break
+                if self.is_recording and self._writer:
+                    self._writer.write(frame)
+                ret, buf = cv2.imencode('.jpg', frame)
+                if not ret:
+                    continue
+                yield (
+                    b'--frame\r\n'
+                    b'Content-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n'
+                )
         finally:
-            print("Releasing camera.")
-            self.release_camera()
+            if self._cap:
+                self._cap.release()
+                self._cap = None
