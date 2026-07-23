@@ -23,6 +23,7 @@ const Logs = () => {
 
     const [logs, setLogs] = useState([]);
     const [sortType, setSortType] = useState("newest");
+    const [sensorFilter, setSensorFilter] = useState("all");
     const [isAdmin, setIsAdmin] = useState(false);
     const [page, setPage] = useState(1);
 
@@ -74,21 +75,32 @@ const Logs = () => {
         }
     };
 
+    const sensorOptions = useMemo(
+        () => [...new Set(logs.map(l => l.sensor_name))].sort((a, b) => a.localeCompare(b)),
+        [logs]
+    );
+
     const sortedLogs = useMemo(() => {
+        const bySensor = sensorFilter === "all" ? logs : logs.filter(l => l.sensor_name === sensorFilter);
         switch (sortType) {
-            case "oldest":  return [...logs].sort((a, b) => new Date(a.log_date) - new Date(b.log_date));
-            case "newest":  return [...logs].sort((a, b) => new Date(b.log_date) - new Date(a.log_date));
-            case "warnings": return [...logs].filter(l => l.is_warning).sort((a, b) => new Date(b.log_date) - new Date(a.log_date));
-            case "reports":  return [...logs].filter(l => !l.is_warning).sort((a, b) => new Date(b.log_date) - new Date(a.log_date));
-            default: return logs;
+            case "oldest":  return [...bySensor].sort((a, b) => new Date(a.log_date) - new Date(b.log_date));
+            case "newest":  return [...bySensor].sort((a, b) => new Date(b.log_date) - new Date(a.log_date));
+            case "warnings": return bySensor.filter(l => l.is_warning).sort((a, b) => new Date(b.log_date) - new Date(a.log_date));
+            case "reports":  return bySensor.filter(l => !l.is_warning).sort((a, b) => new Date(b.log_date) - new Date(a.log_date));
+            default: return bySensor;
         }
-    }, [logs, sortType]);
+    }, [logs, sortType, sensorFilter]);
 
     const totalPages = Math.max(1, Math.ceil(sortedLogs.length / LOGS_PER_PAGE));
     const pageLogs = sortedLogs.slice((page - 1) * LOGS_PER_PAGE, page * LOGS_PER_PAGE);
 
     const handleSortChange = (e) => {
         setSortType(e.target.value);
+        setPage(1);
+    };
+
+    const handleSensorFilterChange = (e) => {
+        setSensorFilter(e.target.value);
         setPage(1);
     };
 
@@ -142,6 +154,21 @@ const Logs = () => {
                             <MenuItem value="oldest">Data — od najstarszych</MenuItem>
                             <MenuItem value="warnings">Tylko ostrzeżenia</MenuItem>
                             <MenuItem value="reports">Tylko raporty</MenuItem>
+                        </Select>
+                    </FormControl>
+
+                    <FormControl size="small" sx={{ minWidth: 200, height: 36 }}>
+                        <InputLabel>Sensor</InputLabel>
+                        <Select
+                            value={sensorFilter}
+                            label="Sensor"
+                            onChange={handleSensorFilterChange}
+                            sx={{ height: 36 }}
+                        >
+                            <MenuItem value="all">Wszystkie</MenuItem>
+                            {sensorOptions.map(name => (
+                                <MenuItem key={name} value={name}>{name}</MenuItem>
+                            ))}
                         </Select>
                     </FormControl>
 

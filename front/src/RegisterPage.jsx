@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
 import {
     Box, TextField, Button, Typography, FormControlLabel,
-    Checkbox, Alert, Divider, InputAdornment, IconButton, LinearProgress,
+    Checkbox, Alert, Divider, InputAdornment, IconButton, LinearProgress, Chip,
 } from "@mui/material";
 import Card from "@mui/material/Card";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
@@ -14,6 +14,7 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import DeleteIcon from "@mui/icons-material/Delete";
 
 const PASSWORD_RULES = [
     { test: p => p.length >= 8,          label: "min. 8 znaków" },
@@ -36,6 +37,38 @@ const RegisterPage = () => {
     const [status, setStatus] = useState(null);
     const [loading, setLoading] = useState(false);
 
+    const [users, setUsers] = useState([]);
+    const [currentUsername, setCurrentUsername] = useState(null);
+    const accessToken = localStorage.getItem("JWT");
+
+    const fetchUsers = async () => {
+        try {
+            const { data } = await axios.get(`${API_BASE}/users`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            setUsers(data);
+        } catch (_) {}
+    };
+
+    useEffect(() => {
+        axios.get(`${API_BASE}/userInfo`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+        }).then(({ data }) => setCurrentUsername(data.currentUser)).catch(() => {});
+        fetchUsers();
+    }, []);
+
+    const handleDeleteUser = async (userId, username) => {
+        if (!window.confirm(`Usunąć użytkownika "${username}"?`)) return;
+        try {
+            await axios.delete(`${API_BASE}/users/${userId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            fetchUsers();
+        } catch (error) {
+            setStatus({ type: "error", message: error.response?.data?.message || "Błąd usuwania użytkownika." });
+        }
+    };
+
     const strength = getStrength(password);
     const passedRules = PASSWORD_RULES.filter(r => r.test(password));
     const failedRules = PASSWORD_RULES.filter(r => !r.test(password));
@@ -53,11 +86,16 @@ const RegisterPage = () => {
         setLoading(true);
         setStatus(null);
         try {
-            await axios.post(`${API_BASE}/register`, { username, password, isAdmin });
+            await axios.post(
+                `${API_BASE}/register`,
+                { username, password, isAdmin },
+                { headers: { Authorization: `Bearer ${accessToken}` } },
+            );
             setStatus({ type: "success", message: `Użytkownik "${username}" został dodany.` });
             setUsername("");
             setPassword("");
             setIsAdmin(false);
+            fetchUsers();
         } catch (error) {
             setStatus({ type: "error", message: error.response?.data?.message || "Błąd serwera." });
         }
@@ -66,7 +104,7 @@ const RegisterPage = () => {
 
     return (
         <Layout>
-            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "flex-start", pt: 4 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", pt: 4 }}>
                 <Card sx={{ width: 420, borderRadius: 3, overflow: "hidden", boxShadow: 4 }}>
 
                     {/* Header */}
@@ -209,6 +247,67 @@ const RegisterPage = () => {
                         >
                             {loading ? "Dodawanie..." : "Dodaj użytkownika"}
                         </Button>
+                    </Box>
+                </Card>
+
+                <Card sx={{ width: 420, mt: 3, borderRadius: 3, overflow: "hidden", boxShadow: 4 }}>
+                    <Box sx={{ bgcolor: "#1a237e", px: 4, py: 2 }}>
+                        <Typography variant="h6" fontWeight="bold" color="white">
+                            Użytkownicy
+                        </Typography>
+                    </Box>
+                    <Box sx={{ px: 2, py: 1.5 }}>
+                        {users.length === 0 && (
+                            <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 2 }}>
+                                Brak użytkowników.
+                            </Typography>
+                        )}
+                        {users.map((u, i) => (
+                            <Box
+                                key={u.id}
+                                sx={{
+                                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                                    px: 1.5, py: 1.25, borderRadius: 2,
+                                    bgcolor: i % 2 === 0 ? "transparent" : "#f7f8fc",
+                                    "&:hover": { bgcolor: "#eef0fa" },
+                                    transition: "background-color 0.15s",
+                                }}
+                            >
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                                    <Box sx={{
+                                        width: 34, height: 34, borderRadius: "50%",
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        bgcolor: u.isadmin ? "#fff3e0" : "#e8eaf6",
+                                        color: u.isadmin ? "#e65100" : "#3949ab",
+                                    }}>
+                                        {u.isadmin ? <AdminPanelSettingsIcon fontSize="small" /> : <PersonIcon fontSize="small" />}
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="body2" fontWeight={600}>{u.username}</Typography>
+                                        <Chip
+                                            label={u.isadmin ? "Admin" : "User"}
+                                            size="small"
+                                            sx={{
+                                                height: 18, fontSize: "0.62rem", fontWeight: "bold", mt: 0.25,
+                                                bgcolor: u.isadmin ? "#fff3e0" : "#eeeeee",
+                                                color: u.isadmin ? "#e65100" : "#616161",
+                                            }}
+                                        />
+                                    </Box>
+                                </Box>
+                                {u.username !== currentUsername ? (
+                                    <IconButton
+                                        size="small"
+                                        onClick={() => handleDeleteUser(u.id, u.username)}
+                                        sx={{ "&:hover": { bgcolor: "#fdecea" } }}
+                                    >
+                                        <DeleteIcon fontSize="small" color="error" />
+                                    </IconButton>
+                                ) : (
+                                    <Box sx={{ width: 32 }} />
+                                )}
+                            </Box>
+                        ))}
                     </Box>
                 </Card>
             </Box>

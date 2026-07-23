@@ -119,7 +119,7 @@ const Layout = ({ children }) => {
 
     const handleRegister = () => {
         if (isAdmin) {
-            navigate("/registerPage");
+            navigate("/registerUser");
         } else {
             alert("Nie masz uprawnień do tej zakładki");
         }

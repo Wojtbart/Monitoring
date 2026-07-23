@@ -21,6 +21,15 @@ class Users(db.Model):
     @staticmethod
     def get_user_by_username(username):
         return Users.query.filter_by(username=username).first()
+
+    @staticmethod
+    def delete_user(user_id):
+        user = db.session.get(Users, user_id)
+        if user:
+            db.session.delete(user)
+            db.session.commit()
+            return True
+        return False
         
 # tabela w której będziemy zapisywać layouty
 class Layout(db.Model):
@@ -137,4 +146,71 @@ class Logs(db.Model):
         for log in logs:
             db.session.delete(log)
         db.session.commit()
-        
+
+
+class DeviceSensor(db.Model):
+    __tablename__ = 'device_sensors'
+    id = db.Column(db.Integer, primary_key=True)
+    rack_id = db.Column(db.String(20), nullable=False)
+    unit = db.Column(db.Integer, nullable=False)
+    temperature = db.Column(db.Float, nullable=False)
+    humidity = db.Column(db.Float, nullable=False)
+    updated_at = db.Column(db.DateTime, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('rack_id', 'unit', name='uq_device_sensor_rack_unit'),
+    )
+
+    @staticmethod
+    def get_or_create_reading(rack_id, unit):
+        import random
+        from datetime import datetime
+
+        device = DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
+        if device is None:
+            device = DeviceSensor(
+                rack_id=rack_id,
+                unit=unit,
+                temperature=round(random.uniform(20.0, 32.0), 1),
+                humidity=round(random.uniform(35.0, 75.0), 1),
+                updated_at=datetime.now(),
+            )
+            db.session.add(device)
+        else:
+            new_temp = device.temperature + random.uniform(-1.5, 1.5)
+            new_humidity = device.humidity + random.uniform(-3.0, 3.0)
+            device.temperature = round(min(45.0, max(10.0, new_temp)), 1)
+            device.humidity = round(min(95.0, max(10.0, new_humidity)), 1)
+            device.updated_at = datetime.now()
+        db.session.commit()
+
+        db.session.add(DeviceSensorHistory(
+            rack_id=rack_id,
+            unit=unit,
+            temperature=device.temperature,
+            humidity=device.humidity,
+            recorded_at=device.updated_at,
+        ))
+        db.session.commit()
+
+        excess = (DeviceSensorHistory.query
+                  .filter_by(rack_id=rack_id, unit=unit)
+                  .order_by(DeviceSensorHistory.recorded_at.desc())
+                  .offset(50)
+                  .all())
+        if excess:
+            for row in excess:
+                db.session.delete(row)
+            db.session.commit()
+
+        return device
+
+
+class DeviceSensorHistory(db.Model):
+    __tablename__ = 'device_sensor_history'
+    id = db.Column(db.Integer, primary_key=True)
+    rack_id = db.Column(db.String(20), nullable=False)
+    unit = db.Column(db.Integer, nullable=False)
+    temperature = db.Column(db.Float, nullable=False)
+    humidity = db.Column(db.Float, nullable=False)
+    recorded_at = db.Column(db.DateTime, nullable=False)

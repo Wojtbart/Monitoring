@@ -66,9 +66,10 @@ const ALL_RACKS = [-2.5, -0.85, 0.85, 2.5].map((cx, i) => ({
 
 // ─── Fixed sensors ────────────────────────────────────────────────────────────
 const SENSOR_DEFS = [
-    { id: "s1", type: "fire",  wx: -(ROOM.W / 2 - 0.3), wz: ROOM.D - 0.3,           label: "Pożar" },
-    { id: "s2", type: "gas",   wx:  (ROOM.W / 2 - 0.3), wz: ROOM.D - 0.3,           label: "Gaz/Dym" },
-    { id: "s4", type: "water", wx: -(ROOM.W / 2 - 0.3), wz: 0.12, floor: true,      label: "Zalanie" },
+    { id: "s1", type: "fire",   wx: -(ROOM.W / 2 - 0.3), wz: ROOM.D - 0.3,                      label: "Pożar" },
+    { id: "s2", type: "gas",    wx:  (ROOM.W / 2 - 0.3), wz: ROOM.D - 0.3,                      label: "Gaz/Dym" },
+    { id: "s4", type: "water",  wx: -(ROOM.W / 2 - 0.3), wz: 0.12, floor: true,                 label: "Zalanie" },
+    { id: "s5", type: "motion", wx:  (ROOM.W / 2 - 0.02), wz: 0.5, wy: ROOM.H - 1.3,             label: "Ruch" },
 ];
 
 const ICONS = { fire: "🔥", gas: "💨", water: "💧", motion: "👁", door: "🚪", temp: "🌡️" };

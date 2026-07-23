@@ -129,6 +129,72 @@ function RackSlot({ slot, sensor, onEdit }) {
     );
 }
 
+function RackVisual({ slots, rackLabel, rackSize, rackId }) {
+    const navigate = useNavigate();
+    return (
+        <Box sx={{ width: 190, flexShrink: 0, mt: 7 }}>
+            <Box sx={{
+                bgcolor: "#0d1117", border: "3px solid #30363d",
+                borderRadius: 2, overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+                display: "flex", flexDirection: "column",
+            }}>
+                <Box sx={{ bgcolor: "#21262d", px: 1, py: 0.6, borderBottom: "2px solid #30363d", textAlign: "center" }}>
+                    <Typography sx={{ color: "#8b949e", fontSize: "0.7rem", fontFamily: "monospace", fontWeight: "bold" }}>
+                        {rackSize}U
+                    </Typography>
+                </Box>
+                {slots.map(slot => {
+                    const dtype = DEVICE_TYPES[slot.type] || DEVICE_TYPES.empty;
+                    const isEmpty = slot.type === "empty";
+                    return (
+                        <Box key={slot.unit} sx={{
+                            height: 36, display: "flex", alignItems: "center", justifyContent: "space-between",
+                            px: 1, bgcolor: isEmpty ? "#161b22" : dtype.color,
+                            opacity: isEmpty ? 0.5 : 0.9,
+                            borderBottom: "1px solid #0d1117",
+                        }}>
+                            <Typography sx={{ color: isEmpty ? "#484f58" : "#fff", fontSize: "0.7rem", fontFamily: "monospace" }}>
+                                {String(slot.unit).padStart(2, "0")}
+                            </Typography>
+                            {!isEmpty && (
+                                <Box sx={{ display: "flex", gap: 0.5 }}>
+                                    <Box
+                                        component="span"
+                                        onClick={() => navigate(`/rack/${rackId}/unit/${slot.unit}/sensor/temperature`)}
+                                        sx={{
+                                            cursor: "pointer", fontSize: "1.2rem", lineHeight: 1,
+                                            width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
+                                            borderRadius: "50%", "&:hover": { bgcolor: "rgba(255,255,255,0.25)" },
+                                        }}
+                                        title="Temperatura"
+                                    >
+                                        🌡️
+                                    </Box>
+                                    <Box
+                                        component="span"
+                                        onClick={() => navigate(`/rack/${rackId}/unit/${slot.unit}/sensor/humidity`)}
+                                        sx={{
+                                            cursor: "pointer", fontSize: "1.2rem", lineHeight: 1,
+                                            width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
+                                            borderRadius: "50%", "&:hover": { bgcolor: "rgba(255,255,255,0.25)" },
+                                        }}
+                                        title="Wilgotność"
+                                    >
+                                        💧
+                                    </Box>
+                                </Box>
+                            )}
+                        </Box>
+                    );
+                })}
+            </Box>
+            <Typography variant="caption" sx={{ display: "block", mt: 0.75, textAlign: "center", color: "text.secondary" }}>
+                Widok wizualny serwera
+            </Typography>
+        </Box>
+    );
+}
+
 export default function ServerRack() {
     const { rackId } = useParams();
     const navigate   = useNavigate();
@@ -212,7 +278,9 @@ export default function ServerRack() {
 
     return (
         <Layout>
-            <Box sx={{ p: 2, maxWidth: 900, mx: "auto" }}>
+            <Box sx={{ p: 2, maxWidth: 1230, mx: "auto", display: "flex", gap: 2, alignItems: "flex-start" }}>
+                <RackVisual slots={slots} rackLabel={rackLabel} rackSize={rackSize} rackId={rackId} />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
                 {/* Header */}
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -277,24 +345,25 @@ export default function ServerRack() {
 
                 {/* Rack */}
                 <Box sx={{ bgcolor: "#0d1117", border: "3px solid #30363d", borderRadius: 2, overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.4)" }}>
-                    <Box sx={{ bgcolor: "#21262d", px: 2, py: 0.75, display: "flex", alignItems: "center", gap: 1, borderBottom: "2px solid #30363d" }}>
-                        <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "#ef5350" }} />
-                        <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "#ffca28" }} />
-                        <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "#66bb6a" }} />
-                        <Typography sx={{ ml: 1, color: "#8b949e", fontSize: "0.7rem", fontFamily: "monospace" }}>
-                            {rackLabel.toUpperCase()} — {rackSize}U
-                        </Typography>
-                    </Box>
-                    <RackHeader />
-                    {slots.map(slot => (
-                        <RackSlot key={slot.unit} slot={slot} sensor={sensor}
-                            onEdit={openEdit} />
-                    ))}
+                        <Box sx={{ bgcolor: "#21262d", px: 2, py: 0.75, display: "flex", alignItems: "center", gap: 1, borderBottom: "2px solid #30363d" }}>
+                            <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "#ef5350" }} />
+                            <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "#ffca28" }} />
+                            <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "#66bb6a" }} />
+                            <Typography sx={{ ml: 1, color: "#8b949e", fontSize: "0.7rem", fontFamily: "monospace" }}>
+                                {rackLabel.toUpperCase()} — {rackSize}U
+                            </Typography>
+                        </Box>
+                        <RackHeader />
+                        {slots.map(slot => (
+                            <RackSlot key={slot.unit} slot={slot} sensor={sensor}
+                                onEdit={openEdit} />
+                        ))}
                 </Box>
 
                 <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, textAlign: "right" }}>
                     Kliknij ikonę edycji aby zmienić typ/nazwę urządzenia
                 </Typography>
+                </Box>
             </Box>
 
             {/* Edit dialog */}

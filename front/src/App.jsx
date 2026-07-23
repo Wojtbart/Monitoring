@@ -11,6 +11,7 @@ import Settings from "./Settings";
 import Logs from "./Logs";
 import Diagram from "./Diagram";
 import ServerRack from "./ServerRack";
+import SensorDetail from "./SensorDetail";
 import FloorPlan from "./FloorPlan";
 
 function App() {
@@ -18,7 +19,7 @@ function App() {
         <Router>
             <Routes>
                 <Route path="/loginPage" element={<LoginPage />} />
-                <Route path="/registerPage" element={<RegisterPage />} />
+                <Route path="/registerUser" element={<RegisterPage />} />
                 <Route path="/home" element={<Home />} />
                 <Route path="/camera" element={<Camera />} />
                 <Route path="/savedVideos" element={<SavedVideos />} />
@@ -26,6 +27,7 @@ function App() {
                 <Route path="/logs" element={<Logs />} />
                 <Route path="/diagram" element={<Diagram />} />
                 <Route path="/rack/:rackId" element={<ServerRack />} />
+                <Route path="/rack/:rackId/unit/:unit/sensor/:type" element={<SensorDetail />} />
                 <Route path="/floorplan" element={<FloorPlan />} />
                 <Route path="/rzut" element={<FloorPlan />} />
                 <Route path="/" element={<FloorPlan />} />
