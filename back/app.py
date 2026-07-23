@@ -2,7 +2,7 @@ import os
 from flask import Flask, Response, request, jsonify, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
-from models import db, Users, PhoneNumbers, Settings, Logs, Layout
+from models import db, Users, PhoneNumbers, Settings, Logs, Layout, DeviceSensor, DeviceSensorHistory
 from pythonping import ping
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
@@ -44,7 +44,12 @@ def hello_world():
 
 
 @app.route('/register', methods=['POST'])
+@jwt_required()
 def register():
+    current_user = Users.get_user_by_username(get_jwt_identity())
+    if not current_user or not current_user.isadmin:
+        return jsonify({'message': 'Brak uprawnień'}), 403
+
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
@@ -56,6 +61,32 @@ def register():
     hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
     Users.add_user(username, hashed_password, isadmin)
     return jsonify({'message': 'Użytkownik utworzony'}), 200
+
+
+@app.route('/users', methods=['GET'])
+@jwt_required()
+def get_users():
+    current_user = Users.get_user_by_username(get_jwt_identity())
+    if not current_user or not current_user.isadmin:
+        return jsonify({'message': 'Brak uprawnień'}), 403
+    return jsonify([
+        {'id': user.id, 'username': user.username, 'isadmin': user.isadmin}
+        for user in Users.get_all_users()
+    ]), 200
+
+
+@app.route('/users/<int:user_id>', methods=['DELETE'])
+@jwt_required()
+def delete_user(user_id):
+    current_user = Users.get_user_by_username(get_jwt_identity())
+    if not current_user or not current_user.isadmin:
+        return jsonify({'message': 'Brak uprawnień'}), 403
+    if current_user.id == user_id:
+        return jsonify({'message': 'Nie możesz usunąć własnego konta'}), 400
+    if not db.session.get(Users, user_id):
+        return jsonify({'message': 'Użytkownik nie znaleziony'}), 404
+    Users.delete_user(user_id)
+    return jsonify({'message': 'Użytkownik usunięty'}), 200
 
 
 @app.route('/login', methods=['POST'])
@@ -153,7 +184,6 @@ def get_videos():
 
 
 @app.route('/videos/<video_name>', methods=['GET'])
-@jwt_required()
 def get_video(video_name):
     return send_from_directory(VIDEOS_DIR, video_name, mimetype='video/mp4')
 
@@ -235,6 +265,32 @@ def delete_logs():
 @app.route('/realTimeData', methods=['GET'])
 def get_real_time_data():
     return jsonify(sensor.get_current_data()), 200
+
+
+@app.route('/deviceSensors/<rack_id>/<int:unit>', methods=['GET'])
+def get_device_sensors(rack_id, unit):
+    device = DeviceSensor.get_or_create_reading(rack_id, unit)
+    return jsonify({
+        'temperature': device.temperature,
+        'humidity': device.humidity,
+        'updated_at': device.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+    }), 200
+
+
+@app.route('/deviceSensors/<rack_id>/<int:unit>/history', methods=['GET'])
+def get_device_sensor_history(rack_id, unit):
+    rows = (DeviceSensorHistory.query
+            .filter_by(rack_id=rack_id, unit=unit)
+            .order_by(DeviceSensorHistory.recorded_at.asc())
+            .all())
+    return jsonify({'history': [
+        {
+            'temperature': row.temperature,
+            'humidity': row.humidity,
+            'recorded_at': row.recorded_at.strftime('%Y-%m-%d %H:%M:%S'),
+        }
+        for row in rows
+    ]}), 200
 
 
 @app.route('/ping/<path:address>', methods=['GET'])
