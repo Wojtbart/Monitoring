@@ -22,10 +22,6 @@ with app.app_context():
     if not Settings.query.first():
         from datetime import time as dtime
         default = Settings(
-            min_temperature=15,
-            max_temperature=35,
-            min_humidity=20,
-            max_humidity=80,
             recording_seconds=30,
             morning_test_time=dtime(8, 0, 0),
             evening_test_time=dtime(20, 0, 0),

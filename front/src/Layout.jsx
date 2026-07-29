@@ -29,7 +29,6 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import MapIcon from '@mui/icons-material/Map';
 import DnsIcon from '@mui/icons-material/Dns';
 import HomeIcon from "@mui/icons-material/Home";
 import "./Layout.css";
@@ -83,7 +82,7 @@ const Layout = ({ children }) => {
     };
 
     const handleHome = async () => {
-        navigate("/home");
+        navigate("/testDevice");
     };
 
     const handleCamera = async () => {
@@ -111,10 +110,6 @@ const Layout = ({ children }) => {
 
     const handleRack = () => {
         navigate("/rack");
-    };
-
-    const handleFloorPlan = () => {
-        navigate("/rzut");
     };
 
     const handleRegister = () => {
@@ -221,10 +216,6 @@ const Layout = ({ children }) => {
                                 <ListItemButton onClick={handleLogs}>
                                     <ListItemIcon><NewspaperIcon /></ListItemIcon>
                                     <ListItemText primary="Logi z systemu" />
-                                </ListItemButton>
-                                <ListItemButton onClick={handleFloorPlan}>
-                                    <ListItemIcon><MapIcon /></ListItemIcon>
-                                    <ListItemText primary="Rzut serwerowni" />
                                 </ListItemButton>
                             </List>
                             <Divider />

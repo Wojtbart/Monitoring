@@ -14,7 +14,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ReportIcon from "@mui/icons-material/Report";
 import WarningIcon from "@mui/icons-material/Warning";
 
-const LOGS_PER_PAGE = 20;
+const LOGS_PER_PAGE_OPTIONS = [10, 20, 30, 50];
 const REFRESH_INTERVAL = 10000;
 
 const Logs = () => {
@@ -26,6 +26,7 @@ const Logs = () => {
     const [sensorFilter, setSensorFilter] = useState("all");
     const [isAdmin, setIsAdmin] = useState(false);
     const [page, setPage] = useState(1);
+    const [logsPerPage, setLogsPerPage] = useState(20);
 
     const axiosAuth = useMemo(() => axios.create({
         baseURL: API_BASE,
@@ -91,8 +92,8 @@ const Logs = () => {
         }
     }, [logs, sortType, sensorFilter]);
 
-    const totalPages = Math.max(1, Math.ceil(sortedLogs.length / LOGS_PER_PAGE));
-    const pageLogs = sortedLogs.slice((page - 1) * LOGS_PER_PAGE, page * LOGS_PER_PAGE);
+    const totalPages = Math.max(1, Math.ceil(sortedLogs.length / logsPerPage));
+    const pageLogs = sortedLogs.slice((page - 1) * logsPerPage, page * logsPerPage);
 
     const handleSortChange = (e) => {
         setSortType(e.target.value);
@@ -101,6 +102,11 @@ const Logs = () => {
 
     const handleSensorFilterChange = (e) => {
         setSensorFilter(e.target.value);
+        setPage(1);
+    };
+
+    const handleLogsPerPageChange = (e) => {
+        setLogsPerPage(Number(e.target.value));
         setPage(1);
     };
 
@@ -116,7 +122,7 @@ const Logs = () => {
                     <Button
                         variant="contained"
                         size="small"
-                        onClick={() => navigate("/home")}
+                        onClick={() => navigate("/")}
                         startIcon={<ArrowBackIcon />}
                         sx={{ height: 36 }}
                     >
@@ -168,6 +174,20 @@ const Logs = () => {
                             <MenuItem value="all">Wszystkie</MenuItem>
                             {sensorOptions.map(name => (
                                 <MenuItem key={name} value={name}>{name}</MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+
+                    <FormControl size="small" sx={{ minWidth: 140, height: 36 }}>
+                        <InputLabel>Logów na stronę</InputLabel>
+                        <Select
+                            value={logsPerPage}
+                            label="Logów na stronę"
+                            onChange={handleLogsPerPageChange}
+                            sx={{ height: 36 }}
+                        >
+                            {LOGS_PER_PAGE_OPTIONS.map(n => (
+                                <MenuItem key={n} value={n}>{n}</MenuItem>
                             ))}
                         </Select>
                     </FormControl>
@@ -227,7 +247,7 @@ const Logs = () => {
                         size="small"
                     />
                     <Typography variant="caption" color="text.secondary">
-                        Strona {page} z {totalPages} · {LOGS_PER_PAGE} logów na stronę
+                        Strona {page} z {totalPages} · {logsPerPage} logów na stronę
                     </Typography>
                 </Box>
             </Box>

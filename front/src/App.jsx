@@ -20,7 +20,7 @@ function App() {
             <Routes>
                 <Route path="/loginPage" element={<LoginPage />} />
                 <Route path="/registerUser" element={<RegisterPage />} />
-                <Route path="/home" element={<Home />} />
+                <Route path="/testDevice" element={<Home />} />
                 <Route path="/camera" element={<Camera />} />
                 <Route path="/savedVideos" element={<SavedVideos />} />
                 <Route path="/settings" element={<Settings />} />

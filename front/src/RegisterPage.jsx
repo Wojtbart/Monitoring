@@ -285,7 +285,7 @@ const RegisterPage = () => {
                                     <Box>
                                         <Typography variant="body2" fontWeight={600}>{u.username}</Typography>
                                         <Chip
-                                            label={u.isadmin ? "Admin" : "User"}
+                                            label={u.isadmin ? "Admin" : "Użytkownik"}
                                             size="small"
                                             sx={{
                                                 height: 18, fontSize: "0.62rem", fontWeight: "bold", mt: 0.25,

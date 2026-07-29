@@ -188,6 +188,26 @@ def get_video(video_name):
     return send_from_directory(VIDEOS_DIR, video_name, mimetype='video/mp4')
 
 
+@app.route('/videos/<video_name>', methods=['DELETE'])
+@jwt_required()
+def delete_video(video_name):
+    safe_name = os.path.basename(video_name)
+    path = os.path.join(VIDEOS_DIR, safe_name)
+    if not os.path.isfile(path):
+        return jsonify({'message': 'Wideo nie znalezione'}), 404
+    os.remove(path)
+    return jsonify({'message': 'Wideo usunięte'}), 200
+
+
+@app.route('/videos', methods=['DELETE'])
+@jwt_required()
+def delete_all_videos():
+    for f in os.listdir(VIDEOS_DIR):
+        if f.endswith(('.mp4', '.avi', '.mov')):
+            os.remove(os.path.join(VIDEOS_DIR, f))
+    return jsonify({'message': 'Wszystkie wideo usunięte'}), 200
+
+
 @app.route('/addPhoneNumber', methods=['POST'])
 @jwt_required()
 def add_phone_number():
@@ -216,10 +236,6 @@ def save_settings():
     data = request.get_json()
     ok = Settings.update_settings(
         data.get('id'),
-        data.get('min_temperature'),
-        data.get('max_temperature'),
-        data.get('min_humidity'),
-        data.get('max_humidity'),
         data.get('recording_seconds'),
         data.get('evening_test_time'),
         data.get('morning_test_time'),
@@ -274,6 +290,37 @@ def get_device_sensors(rack_id, unit):
         'temperature': device.temperature,
         'humidity': device.humidity,
         'updated_at': device.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+        'min_temperature': device.min_temperature,
+        'max_temperature': device.max_temperature,
+        'min_humidity': device.min_humidity,
+        'max_humidity': device.max_humidity,
+    }), 200
+
+
+@app.route('/deviceSensors/<rack_id>/<int:unit>/thresholds', methods=['PUT'])
+@jwt_required()
+def update_device_sensor_thresholds(rack_id, unit):
+    data = request.get_json()
+    min_temperature = data.get('min_temperature')
+    max_temperature = data.get('max_temperature')
+    min_humidity = data.get('min_humidity')
+    max_humidity = data.get('max_humidity')
+    if min_temperature is None or max_temperature is None or min_humidity is None or max_humidity is None:
+        return jsonify({'message': 'Brak danych'}), 400
+    if min_temperature >= max_temperature or min_humidity >= max_humidity:
+        return jsonify({'message': 'Wartość minimalna musi być mniejsza niż maksymalna'}), 400
+
+    device = DeviceSensor.update_thresholds(rack_id, unit, min_temperature, max_temperature, min_humidity, max_humidity)
+    if device is None:
+        return jsonify({'message': 'Urządzenie nie znalezione'}), 404
+    return jsonify({
+        'temperature': device.temperature,
+        'humidity': device.humidity,
+        'updated_at': device.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
+        'min_temperature': device.min_temperature,
+        'max_temperature': device.max_temperature,
+        'min_humidity': device.min_humidity,
+        'max_humidity': device.max_humidity,
     }), 200
 
 

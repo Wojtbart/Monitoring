@@ -39,10 +39,6 @@ class Sensor:
 
     def _apply_settings(self, settings):
         s = settings[0] if settings else {}
-        self.min_temperature = s.get('min_temperature', 15)
-        self.max_temperature = s.get('max_temperature', 35)
-        self.min_humidity = s.get('min_humidity', 20)
-        self.max_humidity = s.get('max_humidity', 80)
         self.recording_seconds = s.get('recording_seconds', 30)
         self.evening_test_time = s.get('evening_test_time', '20:00:00')
         self.morning_test_time = s.get('morning_test_time', '08:00:00')
@@ -79,7 +75,7 @@ class Sensor:
         # --- Mock (dev) ---
         self.temperature = random.randint(20, 32)   # w normie, sporadycznie poza
         self.humidity = random.randint(35, 75)       # w normie
-        self.motion = random.random() < 0.05         # 5% szansa
+        self.motion = False                          # brak podłączonego czujnika PIR — mock wyłączony
         self.fire  = random.random() < 0.01          # 1% szansa
         self.gas   = random.random() < 0.01          # 1% szansa
         self.door  = random.random() < 0.05          # 5% szansa
@@ -127,16 +123,6 @@ class Sensor:
             time.sleep(1)
 
     def _check_thresholds(self):
-        if self.temperature < self.min_temperature or self.temperature > self.max_temperature:
-            desc = f'Temperatura poza zakresem: {self.temperature}°C (zakres {self.min_temperature}–{self.max_temperature}°C)'
-            print(f'[sensor] {desc}')
-            self._log('Czujnik temperatury', True, desc)
-
-        if self.humidity < self.min_humidity or self.humidity > self.max_humidity:
-            desc = f'Wilgotność poza zakresem: {self.humidity}% (zakres {self.min_humidity}–{self.max_humidity}%)'
-            print(f'[sensor] {desc}')
-            self._log('Czujnik wilgotności', True, desc)
-
         if self.fire:
             desc = 'Wykryto ogień!'
             print(f'[sensor] {desc}')

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
-import { Box, Typography, IconButton, Chip } from "@mui/material";
+import { Box, Typography, IconButton, Chip, TextField, Button, Alert } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ThermostatIcon from "@mui/icons-material/Thermostat";
 import WaterDropIcon from "@mui/icons-material/WaterDrop";
@@ -22,7 +22,16 @@ export default function SensorDetail() {
 
     const [current, setCurrent] = useState(null);
     const [history, setHistory] = useState([]);
-    const [thresholds, setThresholds] = useState(null);
+    const [minInput, setMinInput] = useState("");
+    const [maxInput, setMaxInput] = useState("");
+    const [saveStatus, setSaveStatus] = useState(null);
+
+    useEffect(() => {
+        if (current) {
+            setMinInput(String(type === "temperature" ? current.min_temperature : current.min_humidity));
+            setMaxInput(String(type === "temperature" ? current.max_temperature : current.max_humidity));
+        }
+    }, [current, type]);
 
     useEffect(() => {
         const fetchCurrent = async () => {
@@ -49,18 +58,44 @@ export default function SensorDetail() {
         return () => clearInterval(iv);
     }, [rackId, unit]);
 
-    useEffect(() => {
-        axios.get(`${API_BASE}/settings`)
-            .then(({ data }) => setThresholds(data.settings[0]))
-            .catch(() => {});
-    }, []);
-
     const value = current ? current[type] : null;
-    const min = thresholds ? Number(type === "temperature" ? thresholds.min_temperature : thresholds.min_humidity) : null;
-    const max = thresholds ? Number(type === "temperature" ? thresholds.max_temperature : thresholds.max_humidity) : null;
+    const min = current ? (type === "temperature" ? current.min_temperature : current.min_humidity) : null;
+    const max = current ? (type === "temperature" ? current.max_temperature : current.max_humidity) : null;
     const status = value != null && min != null && max != null
         ? (value < min || value > max ? "warning" : "ok")
         : null;
+
+    const accessToken = localStorage.getItem("JWT");
+
+    const handleSaveThresholds = async () => {
+        const minVal = Number(minInput);
+        const maxVal = Number(maxInput);
+        if (Number.isNaN(minVal) || Number.isNaN(maxVal) || minVal >= maxVal) {
+            setSaveStatus({ type: "error", message: "Wartość minimalna musi być mniejsza niż maksymalna." });
+            return;
+        }
+        const payload = type === "temperature"
+            ? {
+                min_temperature: minVal, max_temperature: maxVal,
+                min_humidity: current.min_humidity, max_humidity: current.max_humidity,
+            }
+            : {
+                min_temperature: current.min_temperature, max_temperature: current.max_temperature,
+                min_humidity: minVal, max_humidity: maxVal,
+            };
+        try {
+            const { data } = await axios.put(
+                `${API_BASE}/deviceSensors/${rackId}/${unit}/thresholds`,
+                payload,
+                { headers: { Authorization: `Bearer ${accessToken}` } },
+            );
+            setCurrent(data);
+            setSaveStatus({ type: "success", message: "Progi zapisane." });
+            setTimeout(() => setSaveStatus(null), 2500);
+        } catch (error) {
+            setSaveStatus({ type: "error", message: error.response?.data?.message || "Błąd zapisu progów." });
+        }
+    };
 
     const chartData = history.map(row => ({ time: row.recorded_at.slice(11, 19), value: row[type] }));
 
@@ -95,6 +130,32 @@ export default function SensorDetail() {
                             size="small"
                             sx={{ bgcolor: status === "ok" ? "#2e7d32" : "#ff9800", color: "white", fontWeight: "bold" }}
                         />
+                    )}
+                </Box>
+
+                <Box sx={{ bgcolor: "#1a1a2e", borderRadius: 1.5, p: 2, mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: "#c9d1d9", mb: 1 }}>
+                        Progi alarmowe ({cfg.unit})
+                    </Typography>
+                    <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
+                        <TextField
+                            label="Min" type="number" size="small" value={minInput}
+                            onChange={e => setMinInput(e.target.value)}
+                            sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
+                        />
+                        <TextField
+                            label="Max" type="number" size="small" value={maxInput}
+                            onChange={e => setMaxInput(e.target.value)}
+                            sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
+                        />
+                        <Button variant="contained" size="small" onClick={handleSaveThresholds}>
+                            Zapisz progi
+                        </Button>
+                    </Box>
+                    {saveStatus && (
+                        <Alert severity={saveStatus.type} sx={{ mt: 1.5 }} onClose={() => setSaveStatus(null)}>
+                            {saveStatus.message}
+                        </Alert>
                     )}
                 </Box>
 

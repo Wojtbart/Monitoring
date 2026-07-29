@@ -21,8 +21,6 @@ import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import Card from "@mui/material/Card";
-import DeviceThermostatIcon from "@mui/icons-material/DeviceThermostat";
-import PercentIcon from "@mui/icons-material/Percent";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import AccessAlarmOutlinedIcon from "@mui/icons-material/AccessAlarmOutlined";
 import BedtimeOutlinedIcon from "@mui/icons-material/BedtimeOutlined";
@@ -32,10 +30,6 @@ const Settings = () => {
     const acccesToken = localStorage.getItem("JWT");
     const navigate = useNavigate();
     const [id, setId] = useState(0);
-    const [minTemperature, setMinTemperature] = useState(0);
-    const [maxTemperature, setMaxTemperature] = useState(0);
-    const [minHumidity, setMinHumidity] = useState(0);
-    const [maxHumidity, setMaxHumidity] = useState(0);
     const [timeForStopRecording, setTimeForStopRecording] = useState(0);
     const [morningTimeTest, setMorningTimeTest] = useState(
         dayjs().hour(0).minute(0)
@@ -50,10 +44,6 @@ const Settings = () => {
     const [shouldUpdatePhoneNumbers, setShouldUpdatePhoneNumbers] =
         useState(false);
 
-    const [savedMinTemperature, setSavedMinTemperature] = useState(0);
-    const [savedMaxTemperature, setSavedMaxTemperature] = useState(0);
-    const [savedMinHumidity, setSavedMinHumidity] = useState(0);
-    const [savedMaxHumidity, setSavedMaxHumidity] = useState(0);
     const [savedTimeForStopRecording, setSavedTimeForStopRecording] =
         useState(0);
     const [savedMorningTimeTest, setSavedMorningTimeTest] = useState(
@@ -97,10 +87,6 @@ const Settings = () => {
                 `${API_BASE}/saveSettings`,
                 {
                     id: id,
-                    min_temperature: minTemperature,
-                    max_temperature: maxTemperature,
-                    min_humidity: minHumidity,
-                    max_humidity: maxHumidity,
                     recording_seconds: timeForStopRecording,
                     morning_test_time:
                         dayjs(morningTimeTest).format("HH:mm:ss"),
@@ -149,10 +135,6 @@ const Settings = () => {
                     const settings = response.settings[0];
                     setPhoneNumbers(response.phone_numbers);
                     setId(settings.id);
-                    setSavedMinTemperature(settings.min_temperature);
-                    setSavedMaxTemperature(settings.max_temperature);
-                    setSavedMinHumidity(settings.min_humidity);
-                    setSavedMaxHumidity(settings.max_humidity);
                     setSavedTimeForStopRecording(settings.recording_seconds);
                     setSavedMorningTimeTest(
                         dayjs(settings.morning_test_time, "HH:mm:ss")
@@ -241,10 +223,6 @@ const Settings = () => {
             const getSettings = async () => {
                 const response = await fetchSettings();
                 if (response) {
-                    setSavedMinTemperature(response.min_temperature);
-                    setSavedMaxTemperature(response.max_temperature);
-                    setSavedMinHumidity(response.min_humidity);
-                    setSavedMaxHumidity(response.max_humidity);
                     setSavedTimeForStopRecording(response.recording_seconds);
                     setSavedMorningTimeTest(
                         dayjs(response.morning_test_time, "HH:mm:ss")
@@ -311,68 +289,6 @@ const Settings = () => {
                     ) : (
                         <div>
                             <Grid container spacing={3}>
-                                <Grid item xs={5}>
-                                    <DeviceThermostatIcon
-                                        sx={{
-                                            color: "blue",
-                                            verticalAlign: "bottom",
-                                        }}
-                                    />
-                                    <span style={{ fontWeight: "bold" }}>
-                                        Minimalna
-                                    </span>{" "}
-                                    temperatura:
-                                    <Typography variant="h5">
-                                        {savedMinTemperature} °C
-                                    </Typography>
-                                </Grid>
-
-                                <Grid item xs={5}>
-                                    <DeviceThermostatIcon
-                                        sx={{
-                                            color: "red",
-                                            verticalAlign: "bottom",
-                                        }}
-                                    />
-                                    <span style={{ fontWeight: "bold" }}>
-                                        Maksymalna
-                                    </span>{" "}
-                                    temperatura:
-                                    <Typography variant="h5">
-                                        {savedMaxTemperature} °C
-                                    </Typography>
-                                </Grid>
-
-                                <Grid item xs={5}>
-                                    <PercentIcon
-                                        sx={{
-                                            color: "blue",
-                                            verticalAlign: "bottom",
-                                        }}
-                                    />
-                                    <span style={{ fontWeight: "bold" }}>
-                                        Minimalna
-                                    </span>{" "}
-                                    wilgotność:
-                                    <Typography variant="h5">
-                                        {savedMinHumidity} %
-                                    </Typography>
-                                </Grid>
-                                <Grid item xs={5}>
-                                    <PercentIcon
-                                        sx={{
-                                            color: "red",
-                                            verticalAlign: "bottom",
-                                        }}
-                                    />
-                                    <span style={{ fontWeight: "bold" }}>
-                                        Maksymalna
-                                    </span>{" "}
-                                    wilgotność:
-                                    <Typography variant="h5">
-                                        {savedMaxHumidity} %
-                                    </Typography>
-                                </Grid>
                                 <Grid item xs={5}>
                                     <AccessTimeIcon
                                         sx={{
@@ -453,50 +369,6 @@ const Settings = () => {
                     </Typography>
 
                     <Grid container spacing={2}>
-                        <Grid item xs={3}>
-                            <TextField
-                                label="Minimalna temperatura (°C)"
-                                type="number"
-                                onChange={(e) =>
-                                    setMinTemperature(e.target.value)
-                                }
-                                margin="normal"
-                                InputLabelProps={{ style: { fontSize: 13 } }}
-                            />
-                        </Grid>
-
-                        <Grid item xs={3}>
-                            <TextField
-                                label="Maksymalna temperatura (°C)"
-                                type="number"
-                                onChange={(e) =>
-                                    setMaxTemperature(e.target.value)
-                                }
-                                margin="normal"
-                                InputLabelProps={{ style: { fontSize: 13 } }}
-                            />
-                        </Grid>
-
-                        <Grid item xs={3}>
-                            <TextField
-                                label="Minimalna wilgotność (%)"
-                                type="number"
-                                onChange={(e) => setMinHumidity(e.target.value)}
-                                margin="normal"
-                                InputLabelProps={{ style: { fontSize: 13 } }}
-                            />
-                        </Grid>
-
-                        <Grid item xs={3}>
-                            <TextField
-                                label="Maksymalna wilgotność (%)"
-                                type="number"
-                                onChange={(e) => setMaxHumidity(e.target.value)}
-                                margin="normal"
-                                InputLabelProps={{ style: { fontSize: 13 } }}
-                            />
-                        </Grid>
-
                         <Grid item xs={3}>
                             <TextField
                                 label="Czas do zatrzymania nagrywania (s)"

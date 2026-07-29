@@ -68,14 +68,9 @@ class PhoneNumbers(db.Model):
 class Settings(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True)
-    min_temperature = db.Column(db.Numeric(5, 2), nullable=False)
-    max_temperature = db.Column(db.Numeric(5, 2), nullable=False)
-    min_humidity = db.Column(db.Numeric(5, 2), nullable=False)
-    max_humidity = db.Column(db.Numeric(5, 2), nullable=False)
     recording_seconds = db.Column(db.Integer, nullable=False)
     evening_test_time = db.Column(db.Time, nullable=False)
     morning_test_time = db.Column(db.Time, nullable=False)
-
 
     @staticmethod
     def get_all_settings():
@@ -83,25 +78,17 @@ class Settings(db.Model):
         return [
             {
                 'id': setting.id,
-                'min_temperature': setting.min_temperature,
-                'max_temperature': setting.max_temperature,
-                'min_humidity': setting.min_humidity,
-                'max_humidity': setting.max_humidity,
                 'recording_seconds': setting.recording_seconds,
                 'evening_test_time': setting.evening_test_time.strftime('%H:%M:%S'),
                 'morning_test_time': setting.morning_test_time.strftime('%H:%M:%S')
             }
             for setting in settings_list
         ]
-    
+
     @staticmethod
-    def update_settings(id, min_temperature, max_temperature, min_humidity, max_humidity, recording_seconds, evening_test_time, morning_test_time):
+    def update_settings(id, recording_seconds, evening_test_time, morning_test_time):
         settings = db.session.get(Settings, id)
         if settings:
-            settings.min_temperature = min_temperature
-            settings.max_temperature = max_temperature
-            settings.min_humidity = min_humidity
-            settings.max_humidity = max_humidity
             settings.recording_seconds = recording_seconds
             settings.evening_test_time = evening_test_time
             settings.morning_test_time = morning_test_time
@@ -156,6 +143,10 @@ class DeviceSensor(db.Model):
     temperature = db.Column(db.Float, nullable=False)
     humidity = db.Column(db.Float, nullable=False)
     updated_at = db.Column(db.DateTime, nullable=False)
+    min_temperature = db.Column(db.Float, nullable=False, default=15.0)
+    max_temperature = db.Column(db.Float, nullable=False, default=35.0)
+    min_humidity = db.Column(db.Float, nullable=False, default=20.0)
+    max_humidity = db.Column(db.Float, nullable=False, default=80.0)
 
     __table_args__ = (
         db.UniqueConstraint('rack_id', 'unit', name='uq_device_sensor_rack_unit'),
@@ -174,6 +165,10 @@ class DeviceSensor(db.Model):
                 temperature=round(random.uniform(20.0, 32.0), 1),
                 humidity=round(random.uniform(35.0, 75.0), 1),
                 updated_at=datetime.now(),
+                min_temperature=15.0,
+                max_temperature=35.0,
+                min_humidity=20.0,
+                max_humidity=80.0,
             )
             db.session.add(device)
         else:
@@ -203,6 +198,18 @@ class DeviceSensor(db.Model):
                 db.session.delete(row)
             db.session.commit()
 
+        return device
+
+    @staticmethod
+    def update_thresholds(rack_id, unit, min_temperature, max_temperature, min_humidity, max_humidity):
+        device = DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
+        if device is None:
+            return None
+        device.min_temperature = min_temperature
+        device.max_temperature = max_temperature
+        device.min_humidity = min_humidity
+        device.max_humidity = max_humidity
+        db.session.commit()
         return device
 
 

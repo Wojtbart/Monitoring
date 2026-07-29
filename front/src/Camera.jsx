@@ -14,7 +14,7 @@ const Camera = () => {
     let cameraNotDetected = false;
 
     const handleBackToHome = () => {
-        navigate("/home");
+        navigate("/");
     };
 
     const handleStartRecording = async () => {
@@ -98,7 +98,7 @@ const Camera = () => {
                 {isRecording ? (
                     <div>
                         <p style={{ color: "black" }}>
-                            Recording video: {videoName}
+                            Nagrywanie wideo: {videoName}
                         </p>
                         <Button
                             variant="contained"

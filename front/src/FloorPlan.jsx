@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Stage, Layer, Line, Circle, Text, Group, Rect } from "react-konva";
+import { Stage, Layer, Line, Circle, Text, Group, Rect, Arc } from "react-konva";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "./api";
@@ -177,8 +177,11 @@ function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, acti
                 <Circle x={pwBtnX} y={pwBtnY} radius={pwBtnR + 2}
                     fill="#0a1520" stroke={pwColor} strokeWidth={1}
                     shadowColor={pwColor} shadowBlur={active ? 5 : 2} shadowOpacity={0.8} />
-                <Text text="⏻" x={pwBtnX - pwBtnR - 1} y={pwBtnY - pwBtnR}
-                    width={(pwBtnR + 1) * 2} align="center" fontSize={pwBtnR * 1.5} fill={pwColor} />
+                <Arc x={pwBtnX} y={pwBtnY}
+                    innerRadius={Math.max(pwBtnR - 1.4, 0.6)} outerRadius={pwBtnR - 0.4}
+                    angle={300} rotation={-60} fill={pwColor} />
+                <Line points={[pwBtnX, pwBtnY - pwBtnR, pwBtnX, pwBtnY - pwBtnR + 2.6]}
+                    stroke={pwColor} strokeWidth={1.2} lineCap="round" />
             </Group>
 
         </Group>
