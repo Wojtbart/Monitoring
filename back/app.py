@@ -5,11 +5,10 @@ from flask_cors import CORS
 from models import db, Users, PhoneNumbers, Settings, Logs, Layout, DeviceSensor, DeviceSensorHistory
 from pythonping import ping
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 from camera import Camera
-from ffmpg import convert_to_mp4
 from sensors import Sensor
 
 load_dotenv()
@@ -18,6 +17,7 @@ app = Flask(__name__)
 CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///monitoring.db')
 app.config['JWT_SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret-change-in-production')
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=int(os.getenv('JWT_EXPIRES_MINUTES', 60)))
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
@@ -26,7 +26,7 @@ jwt = JWTManager(app)
 VIDEOS_DIR = os.getenv('VIDEOS_DIR', 'videos')
 os.makedirs(VIDEOS_DIR, exist_ok=True)
 
-camera = Camera()
+camera = Camera(VIDEOS_DIR)
 sensor = None
 
 

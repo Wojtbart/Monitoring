@@ -5,7 +5,6 @@ Uruchom RAZ przed pierwszym startem aplikacji:
 Tworzy tabele i seed domyślnych ustawień.
 Bezpieczne przy ponownym uruchomieniu (nie usuwa danych).
 """
-import os
 from dotenv import load_dotenv
 
 load_dotenv()

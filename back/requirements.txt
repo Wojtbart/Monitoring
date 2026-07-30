@@ -5,11 +5,9 @@ flask-jwt-extended>=4.6.0
 flask-cors>=4.0.0
 werkzeug>=3.0.0
 python-dotenv>=1.0.0
-pytest>=8.0.0
 
 # Camera & video
 opencv-python-headless>=4.9.0
-ffmpeg-python>=0.2.0
 
 # Network tools
 pythonping>=1.1.4
@@ -18,3 +16,6 @@ pythonping>=1.1.4
 # RPi.GPIO>=0.7.1
 # picamera2>=0.3.19
 # adafruit-circuitpython-dht>=4.0.0
+
+# Testy (dev)
+pytest>=8.0.0

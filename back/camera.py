@@ -7,11 +7,11 @@ STREAM_FPS = 15
 
 
 class Camera:
-    def __init__(self):
+    def __init__(self, videos_dir='videos'):
         self._cap = None
         self._writer = None
         self.is_recording = False
-        self._videos_dir = 'videos'
+        self._videos_dir = videos_dir
 
     def _open(self):
         if self._cap is not None:

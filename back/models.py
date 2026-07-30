@@ -1,6 +1,8 @@
 from flask_sqlalchemy import SQLAlchemy
 
-db = SQLAlchemy() 
+db = SQLAlchemy()
+
+
 class Users(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
@@ -68,7 +70,6 @@ class PhoneNumbers(db.Model):
 
 
 
-
 class Settings(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True)
@@ -99,7 +100,6 @@ class Settings(db.Model):
             db.session.commit()
             return True
         return False
-
 
 
 
