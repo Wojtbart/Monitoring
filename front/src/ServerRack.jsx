@@ -230,6 +230,14 @@ export default function ServerRack() {
         if (!id) return;
         axios.get(`${API_BASE}/layouts/${id}`)
             .then(({ data }) => {
+                if (data.type !== "rack" || data.rackId !== rackId) {
+                    // Stale/mismatched id (points at a layout of a different
+                    // type or a different rack) — drop it so the next save
+                    // creates a fresh record instead of overwriting someone
+                    // else's.
+                    localStorage.removeItem(STORAGE_KEY);
+                    return;
+                }
                 const size = data.rackSize || data.slots?.length || 24;
                 setRackSize(size);
                 setSlots(makeSlots(size, data.slots || []));

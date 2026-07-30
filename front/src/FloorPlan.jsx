@@ -265,6 +265,13 @@ export default function FloorPlan() {
         if (!id) return;
         axios.get(`${API_BASE}/layouts/${id}`)
             .then(({ data }) => {
+                if (data.type !== "floorplan_persp") {
+                    // Stale/mismatched id (points at a layout of a different
+                    // type) — drop it so the next save creates a fresh
+                    // record instead of overwriting someone else's.
+                    localStorage.removeItem(FLOORPLAN_KEY);
+                    return;
+                }
                 if (data.rackXPos) setRackXPos(data.rackXPos);
                 if (data.rackActive) setRackActive(data.rackActive);
             })
