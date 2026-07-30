@@ -94,7 +94,7 @@ const Settings = () => {
     useEffect(() => {
         const fetchEnv = async () => {
             try {
-                const res = await axios.get(`${API_BASE}/realTimeData`);
+                const res = await axios.get(`${API_BASE}/real-time-data`);
                 setEnvData(res.data);
             } catch (_) {}
         };
@@ -113,7 +113,7 @@ const Settings = () => {
     const addPhoneNumber = async () => {
         try {
             const response = await axios.post(
-                `${API_BASE}/addPhoneNumber`,
+                `${API_BASE}/phone-numbers`,
                 {
                     phone_number: phoneNumber,
                 },
@@ -133,8 +133,8 @@ const Settings = () => {
 
     const saveSettings = async () => {
         try {
-            const response = await axios.post(
-                `${API_BASE}/saveSettings`,
+            const response = await axios.put(
+                `${API_BASE}/settings`,
                 {
                     id: id,
                     recording_seconds: timeForStopRecording,
@@ -160,7 +160,7 @@ const Settings = () => {
     const fetchSettingsAndPhoneNumbers = async () => {
         try {
             const response = await axios.get(
-                `${API_BASE}/settingsAndPhoneNumbers`,
+                `${API_BASE}/settings-and-phone-numbers`,
                 {
                     headers: {
                         "Content-Type": "application/json",
@@ -201,11 +201,8 @@ const Settings = () => {
 
     const deleteNumber = async (phoneNumber) => {
         try {
-            const response = await axios.post(
-                `${API_BASE}/deletePhoneNumber`,
-                {
-                    phone_number: phoneNumber,
-                },
+            const response = await axios.delete(
+                `${API_BASE}/phone-numbers/${encodeURIComponent(phoneNumber)}`,
                 {
                     headers: {
                         "Content-Type": "application/json",
@@ -223,7 +220,7 @@ const Settings = () => {
     const fetchPhoneNumbers = async () => {
         try {
             const response = await axios.get(
-                `${API_BASE}/phoneNumbers`,
+                `${API_BASE}/phone-numbers`,
                 {
                     headers: {
                         "Content-Type": "application/json",

@@ -252,7 +252,7 @@ export default function FloorPlan() {
 
     useEffect(() => {
         const fetch = async () => {
-            try { const { data } = await axios.get(`${API_BASE}/realTimeData`); setSd(data); }
+            try { const { data } = await axios.get(`${API_BASE}/real-time-data`); setSd(data); }
             catch (_) {}
         };
         fetch();
@@ -263,7 +263,7 @@ export default function FloorPlan() {
     useEffect(() => {
         const id = localStorage.getItem(FLOORPLAN_KEY);
         if (!id) return;
-        axios.get(`${API_BASE}/getLayout/${id}`)
+        axios.get(`${API_BASE}/layouts/${id}`)
             .then(({ data }) => {
                 if (data.rackXPos) setRackXPos(data.rackXPos);
                 if (data.rackActive) setRackActive(data.rackActive);
@@ -280,11 +280,11 @@ export default function FloorPlan() {
             const id = localStorage.getItem(FLOORPLAN_KEY);
             if (id) {
                 try {
-                    await axios.put(`${API_BASE}/updateLayout/${id}`, payload, { headers });
+                    await axios.put(`${API_BASE}/layouts/${id}`, payload, { headers });
                     setSavedAt(new Date()); setSaving(false); return;
                 } catch (_) {}
             }
-            const { data } = await axios.post(`${API_BASE}/saveLayout`, payload, { headers });
+            const { data } = await axios.post(`${API_BASE}/layouts`, payload, { headers });
             localStorage.setItem(FLOORPLAN_KEY, data.id);
             setSavedAt(new Date());
         } catch (_) { alert("Błąd zapisu"); }

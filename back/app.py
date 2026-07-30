@@ -43,7 +43,7 @@ def hello_world():
     return 'Monitoring System API'
 
 
-@app.route('/register', methods=['POST'])
+@app.route('/users', methods=['POST'])
 @jwt_required()
 def register():
     current_user = Users.get_user_by_username(get_jwt_identity())
@@ -101,7 +101,7 @@ def login():
     return jsonify({'accessToken': access_token}), 200
 
 
-@app.route('/userInfo', methods=['GET'])
+@app.route('/users/me', methods=['GET'])
 @jwt_required()
 def user_info():
     current_user = get_jwt_identity()
@@ -109,7 +109,7 @@ def user_info():
     return jsonify({'currentUser': current_user, 'isAdmin': is_admin}), 200
 
 
-@app.route('/saveLayout', methods=['POST'])
+@app.route('/layouts', methods=['POST'])
 @jwt_required()
 def save_layout():
     data = request.get_json()
@@ -121,7 +121,7 @@ def save_layout():
     return jsonify({'message': 'Layout zapisany', 'id': layout.id}), 201
 
 
-@app.route('/getLayout/<int:layout_id>', methods=['GET'])
+@app.route('/layouts/<int:layout_id>', methods=['GET'])
 def get_layout(layout_id):
     layout = db.session.get(Layout, layout_id)
     if not layout:
@@ -129,7 +129,7 @@ def get_layout(layout_id):
     return jsonify(layout.data), 200
 
 
-@app.route('/updateLayout/<int:layout_id>', methods=['PUT'])
+@app.route('/layouts/<int:layout_id>', methods=['PUT'])
 @jwt_required()
 def update_layout(layout_id):
     layout = db.session.get(Layout, layout_id)
@@ -148,12 +148,12 @@ def generate_frames():
         yield frame_bytes
 
 
-@app.route('/captureVideo')
+@app.route('/camera/stream')
 def capture_video():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 
-@app.route('/startRecording', methods=['POST'])
+@app.route('/camera/recording', methods=['POST'])
 @jwt_required()
 def start_recording():
     if sensor.is_recording:
@@ -166,7 +166,7 @@ def start_recording():
     return jsonify({'message': 'Nagrywanie rozpoczęte', 'videoName': video_name}), 200
 
 
-@app.route('/stopRecording', methods=['POST'])
+@app.route('/camera/recording', methods=['DELETE'])
 @jwt_required()
 def stop_recording():
     camera.stop_recording()
@@ -208,7 +208,7 @@ def delete_all_videos():
     return jsonify({'message': 'Wszystkie wideo usunięte'}), 200
 
 
-@app.route('/addPhoneNumber', methods=['POST'])
+@app.route('/phone-numbers', methods=['POST'])
 @jwt_required()
 def add_phone_number():
     data = request.get_json()
@@ -220,18 +220,14 @@ def add_phone_number():
     return jsonify({'message': 'Numer telefonu dodany'}), 200
 
 
-@app.route('/deletePhoneNumber', methods=['POST'])
+@app.route('/phone-numbers/<phone_number>', methods=['DELETE'])
 @jwt_required()
-def delete_phone_number():
-    data = request.get_json()
-    phone_number = data.get('phone_number')
-    if not phone_number:
-        return jsonify({'message': 'Numer telefonu wymagany'}), 400
+def delete_phone_number(phone_number):
     PhoneNumbers.delete_phone_number(phone_number)
     return jsonify({'message': 'Numer telefonu usunięty'}), 200
 
 
-@app.route('/saveSettings', methods=['POST'])
+@app.route('/settings', methods=['PUT'])
 @jwt_required()
 def save_settings():
     data = request.get_json()
@@ -247,7 +243,7 @@ def save_settings():
     return jsonify({'message': 'Błąd zapisu ustawień'}), 400
 
 
-@app.route('/settingsAndPhoneNumbers', methods=['GET'])
+@app.route('/settings-and-phone-numbers', methods=['GET'])
 def get_settings():
     return jsonify({
         'phone_numbers': PhoneNumbers.get_all_phone_numbers(),
@@ -255,7 +251,7 @@ def get_settings():
     }), 200
 
 
-@app.route('/phoneNumbers', methods=['GET'])
+@app.route('/phone-numbers', methods=['GET'])
 @jwt_required()
 def get_phone_numbers():
     return jsonify({'phone_numbers': PhoneNumbers.get_all_phone_numbers()}), 200
@@ -272,19 +268,19 @@ def get_logs():
     return jsonify({'logs': Logs.get_all_logs()}), 200
 
 
-@app.route('/deleteLogs', methods=['POST'])
+@app.route('/logs', methods=['DELETE'])
 @jwt_required()
 def delete_logs():
     Logs.remove_all_logs()
     return jsonify({'message': 'Logi usunięte'}), 200
 
 
-@app.route('/realTimeData', methods=['GET'])
+@app.route('/real-time-data', methods=['GET'])
 def get_real_time_data():
     return jsonify(sensor.get_current_data()), 200
 
 
-@app.route('/deviceSensors/<rack_id>/<int:unit>', methods=['GET'])
+@app.route('/device-sensors/<rack_id>/<int:unit>', methods=['GET'])
 def get_device_sensors(rack_id, unit):
     device = DeviceSensor.get_or_create_reading(rack_id, unit)
     return jsonify({
@@ -298,7 +294,7 @@ def get_device_sensors(rack_id, unit):
     }), 200
 
 
-@app.route('/deviceSensors/<rack_id>/<int:unit>/thresholds', methods=['PUT'])
+@app.route('/device-sensors/<rack_id>/<int:unit>/thresholds', methods=['PUT'])
 @jwt_required()
 def update_device_sensor_thresholds(rack_id, unit):
     data = request.get_json()
@@ -325,7 +321,7 @@ def update_device_sensor_thresholds(rack_id, unit):
     }), 200
 
 
-@app.route('/deviceSensors/<rack_id>/<int:unit>/history', methods=['GET'])
+@app.route('/device-sensors/<rack_id>/<int:unit>/history', methods=['GET'])
 def get_device_sensor_history(rack_id, unit):
     rows = (DeviceSensorHistory.query
             .filter_by(rack_id=rack_id, unit=unit)

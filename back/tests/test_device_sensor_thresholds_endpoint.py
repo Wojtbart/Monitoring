@@ -10,7 +10,7 @@ def _login(client, app):
 
 
 def test_get_device_sensors_includes_thresholds(client, app):
-    resp = client.get('/deviceSensors/A0/2')
+    resp = client.get('/device-sensors/A0/2')
     data = resp.get_json()
     assert data['min_temperature'] == 15.0
     assert data['max_temperature'] == 35.0
@@ -19,8 +19,8 @@ def test_get_device_sensors_includes_thresholds(client, app):
 
 
 def test_update_thresholds_requires_auth(client, app):
-    client.get('/deviceSensors/A0/2')
-    resp = client.put('/deviceSensors/A0/2/thresholds', json={
+    client.get('/device-sensors/A0/2')
+    resp = client.put('/device-sensors/A0/2/thresholds', json={
         'min_temperature': 10, 'max_temperature': 30,
         'min_humidity': 25, 'max_humidity': 70,
     })
@@ -28,10 +28,10 @@ def test_update_thresholds_requires_auth(client, app):
 
 
 def test_update_thresholds_succeeds(client, app):
-    client.get('/deviceSensors/A0/2')
+    client.get('/device-sensors/A0/2')
     token = _login(client, app)
     resp = client.put(
-        '/deviceSensors/A0/2/thresholds',
+        '/device-sensors/A0/2/thresholds',
         json={'min_temperature': 10, 'max_temperature': 30, 'min_humidity': 25, 'max_humidity': 70},
         headers={'Authorization': f'Bearer {token}'},
     )
@@ -45,10 +45,10 @@ def test_update_thresholds_succeeds(client, app):
 
 
 def test_update_thresholds_rejects_invalid_range(client, app):
-    client.get('/deviceSensors/A0/2')
+    client.get('/device-sensors/A0/2')
     token = _login(client, app)
     resp = client.put(
-        '/deviceSensors/A0/2/thresholds',
+        '/device-sensors/A0/2/thresholds',
         json={'min_temperature': 30, 'max_temperature': 10, 'min_humidity': 25, 'max_humidity': 70},
         headers={'Authorization': f'Bearer {token}'},
     )
@@ -58,7 +58,7 @@ def test_update_thresholds_rejects_invalid_range(client, app):
 def test_update_thresholds_404_when_device_missing(client, app):
     token = _login(client, app)
     resp = client.put(
-        '/deviceSensors/Z9/999/thresholds',
+        '/device-sensors/Z9/999/thresholds',
         json={'min_temperature': 10, 'max_temperature': 30, 'min_humidity': 25, 'max_humidity': 70},
         headers={'Authorization': f'Bearer {token}'},
     )

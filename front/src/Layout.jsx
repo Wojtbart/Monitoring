@@ -54,7 +54,7 @@ const Layout = ({ children }) => {
             const fetchUser = async () => {
                 try {
                     const response = await axios.get(
-                        `${API_BASE}/userInfo`,
+                        `${API_BASE}/users/me`,
                         {
                             headers: {
                                 "Content-Type": "application/json",

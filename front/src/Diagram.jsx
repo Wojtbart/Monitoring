@@ -102,7 +102,7 @@ function Flow() {
     const layout = { nodes, edges };
 
     try {
-      const res = await fetch(`${API_BASE}/saveLayout`, {
+      const res = await fetch(`${API_BASE}/layouts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(layout),
@@ -119,7 +119,7 @@ function Flow() {
 
   const loadLayoutById = async (layoutId) => {
   try {
-    const res = await fetch(`${API_BASE}/getLayout/${layoutId}`);
+    const res = await fetch(`${API_BASE}/layouts/${layoutId}`);
     if (!res.ok) throw new Error("Błąd pobierania layoutu");
 
     const data = await res.json();

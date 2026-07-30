@@ -12,7 +12,7 @@ def _login(client, username, password):
 
 
 def test_register_requires_auth(client, app):
-    resp = client.post('/register', json={'username': 'newbie', 'password': 'pw'})
+    resp = client.post('/users', json={'username': 'newbie', 'password': 'pw'})
     assert resp.status_code == 401
 
 
@@ -22,7 +22,7 @@ def test_register_requires_admin(client, app):
     token = _login(client, 'regular', 'pw123')
 
     resp = client.post(
-        '/register',
+        '/users',
         json={'username': 'newbie', 'password': 'pw'},
         headers={'Authorization': f'Bearer {token}'},
     )
@@ -35,7 +35,7 @@ def test_register_succeeds_for_admin(client, app):
     token = _login(client, 'boss', 'pw123')
 
     resp = client.post(
-        '/register',
+        '/users',
         json={'username': 'newbie', 'password': 'pw'},
         headers={'Authorization': f'Bearer {token}'},
     )

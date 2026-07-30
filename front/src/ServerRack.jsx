@@ -217,7 +217,7 @@ export default function ServerRack() {
 
     useEffect(() => {
         const fetch = async () => {
-            try { const { data } = await axios.get(`${API_BASE}/realTimeData`); setSensor(data); }
+            try { const { data } = await axios.get(`${API_BASE}/real-time-data`); setSensor(data); }
             catch (_) {}
         };
         fetch();
@@ -228,7 +228,7 @@ export default function ServerRack() {
     useEffect(() => {
         const id = localStorage.getItem(STORAGE_KEY);
         if (!id) return;
-        axios.get(`${API_BASE}/getLayout/${id}`)
+        axios.get(`${API_BASE}/layouts/${id}`)
             .then(({ data }) => {
                 const size = data.rackSize || data.slots?.length || 24;
                 setRackSize(size);
@@ -250,11 +250,11 @@ export default function ServerRack() {
             const id = localStorage.getItem(STORAGE_KEY);
             if (id) {
                 try {
-                    await axios.put(`${API_BASE}/updateLayout/${id}`, payload, { headers });
+                    await axios.put(`${API_BASE}/layouts/${id}`, payload, { headers });
                     setSavedAt(new Date()); setSaving(false); return;
                 } catch (_) {}
             }
-            const { data } = await axios.post(`${API_BASE}/saveLayout`, payload, { headers });
+            const { data } = await axios.post(`${API_BASE}/layouts`, payload, { headers });
             localStorage.setItem(STORAGE_KEY, data.id);
             setSavedAt(new Date());
         } catch (_) { alert("Błąd zapisu konfiguracji szafy"); }

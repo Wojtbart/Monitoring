@@ -51,7 +51,7 @@ const RegisterPage = () => {
     };
 
     useEffect(() => {
-        axios.get(`${API_BASE}/userInfo`, {
+        axios.get(`${API_BASE}/users/me`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         }).then(({ data }) => setCurrentUsername(data.currentUser)).catch(() => {});
         fetchUsers();
@@ -87,7 +87,7 @@ const RegisterPage = () => {
         setStatus(null);
         try {
             await axios.post(
-                `${API_BASE}/register`,
+                `${API_BASE}/users`,
                 { username, password, isAdmin },
                 { headers: { Authorization: `Bearer ${accessToken}` } },
             );

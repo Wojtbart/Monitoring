@@ -36,7 +36,7 @@ export default function SensorDetail() {
     useEffect(() => {
         const fetchCurrent = async () => {
             try {
-                const { data } = await axios.get(`${API_BASE}/deviceSensors/${rackId}/${unit}`);
+                const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}/${unit}`);
                 setCurrent(data);
             } catch (_) {}
         };
@@ -48,7 +48,7 @@ export default function SensorDetail() {
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const { data } = await axios.get(`${API_BASE}/deviceSensors/${rackId}/${unit}/history`);
+                const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}/${unit}/history`);
                 const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
                 setHistory(data.history.filter(row => new Date(row.recorded_at.replace(" ", "T")).getTime() >= tenMinutesAgo));
             } catch (_) {}
@@ -85,7 +85,7 @@ export default function SensorDetail() {
             };
         try {
             const { data } = await axios.put(
-                `${API_BASE}/deviceSensors/${rackId}/${unit}/thresholds`,
+                `${API_BASE}/device-sensors/${rackId}/${unit}/thresholds`,
                 payload,
                 { headers: { Authorization: `Bearer ${accessToken}` } },
             );

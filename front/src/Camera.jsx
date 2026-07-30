@@ -20,7 +20,7 @@ const Camera = () => {
     const handleStartRecording = async () => {
         try {
             const response = await axios.post(
-                `${API_BASE}/startRecording`,
+                `${API_BASE}/camera/recording`,
                 {},
                 {
                     headers: {
@@ -42,11 +42,8 @@ const Camera = () => {
 
     const handleStopRecording = async () => {
         try {
-            await axios.post(
-                `${API_BASE}/stopRecording`,
-                {
-                    videoName,
-                },
+            await axios.delete(
+                `${API_BASE}/camera/recording`,
                 {
                     headers: {
                         Authorization: `Bearer ${accessToken}`,
@@ -85,7 +82,7 @@ const Camera = () => {
                                         "14px 15px 15px rgba(0, 0, 0, 0.5)",
                                 }}
                                 slot="media"
-                                src={`${API_BASE}/captureVideo`}
+                                src={`${API_BASE}/camera/stream`}
                                 playsInline
                                 id="camera-image"
                             />

@@ -51,7 +51,7 @@ const Logs = () => {
 
     const fetchUserInfo = useCallback(async () => {
         try {
-            const { data } = await axiosAuth.get("/userInfo");
+            const { data } = await axiosAuth.get("/users/me");
             setIsAdmin(data.isAdmin || false);
         } catch {
             navigate("/loginPage");
@@ -68,7 +68,7 @@ const Logs = () => {
     const deleteLogs = async () => {
         if (!window.confirm("Czy na pewno chcesz usunąć logi?")) return;
         try {
-            await axiosAuth.post("/deleteLogs");
+            await axiosAuth.delete("/logs");
             setLogs([]);
             setPage(1);
         } catch {
