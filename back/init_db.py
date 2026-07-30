@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app import app
-from models import db, Settings, Users
+from models import db, Setting, User
 from werkzeug.security import generate_password_hash
 
 with app.app_context():
@@ -18,9 +18,9 @@ with app.app_context():
     print('[init_db] Tabele utworzone.')
 
     # Seed domyślnych ustawień jeśli tabela pusta
-    if not Settings.query.first():
+    if not Setting.query.first():
         from datetime import time as dtime
-        default = Settings(
+        default = Setting(
             recording_seconds=30,
             morning_test_time=dtime(8, 0, 0),
             evening_test_time=dtime(20, 0, 0),
@@ -32,9 +32,9 @@ with app.app_context():
         print('[init_db] Ustawienia już istnieją — pominięto seed.')
 
     # Seed konta admin jeśli brak użytkowników
-    if not Users.query.first():
+    if not User.query.first():
         admin_pass = generate_password_hash('admin123', method='pbkdf2:sha256')
-        Users.add_user('admin', admin_pass, is_admin=True)
+        User.add_user('admin', admin_pass, is_admin=True)
         print('[init_db] Konto admin utworzone (login: admin, hasło: admin123).')
         print('[init_db] ZMIEŃ HASŁO po pierwszym logowaniu!')
     else:

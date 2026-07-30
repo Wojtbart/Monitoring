@@ -1,10 +1,10 @@
 from werkzeug.security import generate_password_hash
-from models import Users
+from models import User
 
 
 def _login(client, app):
     with app.app_context():
-        Users.add_user('boss', generate_password_hash('pw123', method='pbkdf2:sha256'), True)
+        User.add_user('boss', generate_password_hash('pw123', method='pbkdf2:sha256'), True)
     resp = client.post('/login', json={'username': 'boss', 'password': 'pw123'})
     return resp.get_json()['accessToken']
 

@@ -58,7 +58,7 @@ class Sensor:
         }
 
     def _log(self, sensor_name, is_warning, description):
-        from models import Logs
+        from models import Log
         key = f'{sensor_name}:{description[:40]}'
         now = time.time()
         if now - self._last_log.get(key, 0) < LOG_COOLDOWN_SECONDS:
@@ -66,7 +66,7 @@ class Sensor:
         self._last_log[key] = now
         try:
             with self.app.app_context():
-                Logs.add_log(datetime.now(), sensor_name, is_warning, description)
+                Log.add_log(datetime.now(), sensor_name, is_warning, description)
         except Exception as e:
             print(f'[sensor] błąd zapisu logu: {e}')
 

@@ -67,4 +67,3 @@ Zobacz `back/.env.example` i `front/.env.example`. Pliki `.env` (z prawdziwymi w
 ## Znane ograniczenia
 
 - Czujniki (poza kamerą) są aktualnie mockowane losowo — obsługa prawdziwego sprzętu (RPi GPIO, DHT22) jest zakomentowana w `back/sensors.py`, gotowa do podłączenia.
-- Nazewnictwo endpointów API jest niespójne (część w stylu RPC/camelCase jak `/addPhoneNumber`, część w stylu REST jak `/users`) — świadomie nietknięte, bo ujednolicenie wymagałoby zmian w całym froncie.

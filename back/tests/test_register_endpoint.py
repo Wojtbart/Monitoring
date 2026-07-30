@@ -1,9 +1,9 @@
 from werkzeug.security import generate_password_hash
-from models import db, Users
+from models import db, User
 
 
 def _make_user(username, password, is_admin):
-    Users.add_user(username, generate_password_hash(password, method='pbkdf2:sha256'), is_admin)
+    User.add_user(username, generate_password_hash(password, method='pbkdf2:sha256'), is_admin)
 
 
 def _login(client, username, password):
@@ -41,4 +41,4 @@ def test_register_succeeds_for_admin(client, app):
     )
     assert resp.status_code == 200
     with app.app_context():
-        assert Users.get_user_by_username('newbie') is not None
+        assert User.get_user_by_username('newbie') is not None

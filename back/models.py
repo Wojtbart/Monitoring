@@ -3,7 +3,7 @@ from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 
 
-class Users(db.Model):
+class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -12,21 +12,21 @@ class Users(db.Model):
 
     @staticmethod
     def add_user(username, password, is_admin):
-        new_user = Users(username=username, password=password, is_admin=is_admin)
+        new_user = User(username=username, password=password, is_admin=is_admin)
         db.session.add(new_user)
         db.session.commit()
 
     @staticmethod
     def get_all_users():
-        return Users.query.all()
+        return User.query.all()
 
     @staticmethod
     def get_user_by_username(username):
-        return Users.query.filter_by(username=username).first()
+        return User.query.filter_by(username=username).first()
 
     @staticmethod
     def delete_user(user_id):
-        user = db.session.get(Users, user_id)
+        user = db.session.get(User, user_id)
         if user:
             db.session.delete(user)
             db.session.commit()
@@ -40,28 +40,28 @@ class Layout(db.Model):
     data = db.Column(db.JSON, nullable=False)  # JSONB w postgresie
 
 
-class PhoneNumbers(db.Model):
+class PhoneNumber(db.Model):
     __tablename__ = 'phone_numbers'
     phone_number = db.Column(db.String(80), unique=True, nullable=False, primary_key=True)
 
     @staticmethod
     def add_phone_number(phone_number):
-        if db.session.get(PhoneNumbers, phone_number):
+        if db.session.get(PhoneNumber, phone_number):
             return False
-        new_phone_number = PhoneNumbers(phone_number=phone_number)
+        new_phone_number = PhoneNumber(phone_number=phone_number)
         db.session.add(new_phone_number)
         db.session.commit()
         return True
 
     @staticmethod
     def get_all_phone_numbers():
-        phone_numbers = PhoneNumbers.query.all()
+        phone_numbers = PhoneNumber.query.all()
         phone_numbers = [phone_number.phone_number for phone_number in phone_numbers]
         return phone_numbers
-    
+
     @staticmethod
     def delete_phone_number(phone_number):
-        phone_number = db.session.get(PhoneNumbers, phone_number)
+        phone_number = db.session.get(PhoneNumber, phone_number)
         if phone_number:
             db.session.delete(phone_number)
             db.session.commit()
@@ -70,7 +70,7 @@ class PhoneNumbers(db.Model):
 
 
 
-class Settings(db.Model):
+class Setting(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True)
     recording_seconds = db.Column(db.Integer, nullable=False)
@@ -79,7 +79,7 @@ class Settings(db.Model):
 
     @staticmethod
     def get_all_settings():
-        settings_list = Settings.query.all()
+        settings_list = Setting.query.all()
         return [
             {
                 'id': setting.id,
@@ -92,7 +92,7 @@ class Settings(db.Model):
 
     @staticmethod
     def update_settings(id, recording_seconds, evening_test_time, morning_test_time):
-        settings = db.session.get(Settings, id)
+        settings = db.session.get(Setting, id)
         if settings:
             settings.recording_seconds = recording_seconds
             settings.evening_test_time = evening_test_time
@@ -103,7 +103,7 @@ class Settings(db.Model):
 
 
 
-class Logs(db.Model):
+class Log(db.Model):
     __tablename__ = 'logs'
     id = db.Column(db.Integer, primary_key=True)
     log_date = db.Column(db.DateTime, nullable=False)
@@ -113,13 +113,13 @@ class Logs(db.Model):
 
     @staticmethod
     def add_log(log_date, sensor_name, is_warning, log_description):
-        new_log = Logs(log_date=log_date, sensor_name=sensor_name, is_warning=is_warning, log_description=log_description)
+        new_log = Log(log_date=log_date, sensor_name=sensor_name, is_warning=is_warning, log_description=log_description)
         db.session.add(new_log)
         db.session.commit()
 
     @staticmethod
     def get_all_logs():
-        logs = Logs.query.all()
+        logs = Log.query.all()
         return [
             {
                 'id': log.id,
@@ -130,10 +130,10 @@ class Logs(db.Model):
             }
             for log in logs
         ]
-    
+
     @staticmethod
     def remove_all_logs():
-        logs = Logs.query.all()
+        logs = Log.query.all()
         for log in logs:
             db.session.delete(log)
         db.session.commit()
