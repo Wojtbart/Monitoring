@@ -1,19 +1,4 @@
 .claude/settings.local.json
 
-# Local secrets/config (keep .env.example tracked)
-.env
-
 # IDE
 .vs/
-
-# Python
-back/__pycache__/
-*.pyc
-
-# Local dev database
-back/instance/
-
-# Recorded camera videos
-back/videos/*.mp4
-back/videos/*.avi
-back/videos/*.mov

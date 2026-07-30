@@ -1,0 +1,14 @@
+# Local secrets/config (keep .env.example tracked)
+.env
+
+# Python
+__pycache__/
+*.pyc
+
+# Local dev database
+instance/
+
+# Recorded camera videos
+videos/*.mp4
+videos/*.avi
+videos/*.mov
