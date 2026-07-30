@@ -92,11 +92,13 @@ class Setting(db.Model):
 
     @staticmethod
     def update_settings(id, recording_seconds, evening_test_time, morning_test_time):
+        from datetime import datetime
+
         settings = db.session.get(Setting, id)
         if settings:
             settings.recording_seconds = recording_seconds
-            settings.evening_test_time = evening_test_time
-            settings.morning_test_time = morning_test_time
+            settings.evening_test_time = datetime.strptime(evening_test_time, '%H:%M:%S').time()
+            settings.morning_test_time = datetime.strptime(morning_test_time, '%H:%M:%S').time()
             db.session.commit()
             return True
         return False
