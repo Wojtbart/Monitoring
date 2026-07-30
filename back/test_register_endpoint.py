@@ -2,8 +2,8 @@ from werkzeug.security import generate_password_hash
 from models import db, Users
 
 
-def _make_user(username, password, isadmin):
-    Users.add_user(username, generate_password_hash(password, method='pbkdf2:sha256'), isadmin)
+def _make_user(username, password, is_admin):
+    Users.add_user(username, generate_password_hash(password, method='pbkdf2:sha256'), is_admin)
 
 
 def _login(client, username, password):

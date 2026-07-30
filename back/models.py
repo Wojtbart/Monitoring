@@ -6,11 +6,11 @@ class Users(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), unique=False, nullable=False)
-    isadmin = db.Column(db.Boolean, unique=False, nullable=False)
+    is_admin = db.Column(db.Boolean, unique=False, nullable=False)
 
     @staticmethod
-    def add_user(username, password, isadmin):
-        new_user = Users(username=username, password=password, isadmin=isadmin)
+    def add_user(username, password, is_admin):
+        new_user = Users(username=username, password=password, is_admin=is_admin)
         db.session.add(new_user)
         db.session.commit()
 
@@ -33,19 +33,23 @@ class Users(db.Model):
         
 # tabela w której będziemy zapisywać layouty
 class Layout(db.Model):
+    __tablename__ = 'layouts'
     id = db.Column(db.Integer, primary_key=True)
     data = db.Column(db.JSON, nullable=False)  # JSONB w postgresie
 
 
 class PhoneNumbers(db.Model):
-    __tablename__ = 'phonenumbers'
+    __tablename__ = 'phone_numbers'
     phone_number = db.Column(db.String(80), unique=True, nullable=False, primary_key=True)
 
     @staticmethod
     def add_phone_number(phone_number):
+        if db.session.get(PhoneNumbers, phone_number):
+            return False
         new_phone_number = PhoneNumbers(phone_number=phone_number)
         db.session.add(new_phone_number)
         db.session.commit()
+        return True
 
     @staticmethod
     def get_all_phone_numbers():

@@ -47,19 +47,19 @@ def hello_world():
 @jwt_required()
 def register():
     current_user = Users.get_user_by_username(get_jwt_identity())
-    if not current_user or not current_user.isadmin:
+    if not current_user or not current_user.is_admin:
         return jsonify({'message': 'Brak uprawnień'}), 403
 
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
-    isadmin = data.get('isAdmin', False)
+    is_admin = data.get('isAdmin', False)
     if not username or not password:
         return jsonify({'message': 'Brak danych'}), 400
     if Users.get_user_by_username(username):
         return jsonify({'message': 'Użytkownik o takim loginie istnieje'}), 400
     hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-    Users.add_user(username, hashed_password, isadmin)
+    Users.add_user(username, hashed_password, is_admin)
     return jsonify({'message': 'Użytkownik utworzony'}), 200
 
 
@@ -67,10 +67,10 @@ def register():
 @jwt_required()
 def get_users():
     current_user = Users.get_user_by_username(get_jwt_identity())
-    if not current_user or not current_user.isadmin:
+    if not current_user or not current_user.is_admin:
         return jsonify({'message': 'Brak uprawnień'}), 403
     return jsonify([
-        {'id': user.id, 'username': user.username, 'isadmin': user.isadmin}
+        {'id': user.id, 'username': user.username, 'isadmin': user.is_admin}
         for user in Users.get_all_users()
     ]), 200
 
@@ -79,7 +79,7 @@ def get_users():
 @jwt_required()
 def delete_user(user_id):
     current_user = Users.get_user_by_username(get_jwt_identity())
-    if not current_user or not current_user.isadmin:
+    if not current_user or not current_user.is_admin:
         return jsonify({'message': 'Brak uprawnień'}), 403
     if current_user.id == user_id:
         return jsonify({'message': 'Nie możesz usunąć własnego konta'}), 400
@@ -105,7 +105,7 @@ def login():
 @jwt_required()
 def user_info():
     current_user = get_jwt_identity()
-    is_admin = Users.get_user_by_username(current_user).isadmin
+    is_admin = Users.get_user_by_username(current_user).is_admin
     return jsonify({'currentUser': current_user, 'isAdmin': is_admin}), 200
 
 
@@ -215,7 +215,8 @@ def add_phone_number():
     phone_number = data.get('phone_number')
     if not phone_number:
         return jsonify({'message': 'Numer telefonu wymagany'}), 400
-    PhoneNumbers.add_phone_number(phone_number)
+    if not PhoneNumbers.add_phone_number(phone_number):
+        return jsonify({'message': 'Ten numer telefonu już istnieje'}), 400
     return jsonify({'message': 'Numer telefonu dodany'}), 200
 
 

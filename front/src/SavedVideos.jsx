@@ -4,19 +4,27 @@ import { API_BASE } from "./api";
 import Layout from "./Layout";
 import {
     Box, Typography, TextField, InputAdornment, Chip,
-    IconButton, Divider, LinearProgress,
+    IconButton, Divider, LinearProgress, Button,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import CloseIcon from "@mui/icons-material/Close";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import DownloadIcon from "@mui/icons-material/Download";
+import DeleteIcon from "@mui/icons-material/Delete";
+import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
 
 // Try to extract date/time from common filename patterns:
+// Video_Date_2026_07_22_Time_21_07_32.mp4 (this app's camera.py)
 // recording_20240115_143000.mp4  |  rec_2024-01-15_14-30-00.mp4  |  clip_1705329000.mp4
 function parseVideoDate(name) {
+    // this app's format: Date_YYYY_MM_DD_Time_HH_MM_SS
+    let m = name.match(/Date_(\d{4})_(\d{2})_(\d{2})_Time_(\d{2})_(\d{2})_(\d{2})/);
+    if (m) {
+        return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+    }
     // pattern: 8-digit date + 6-digit time (YYYYMMDD_HHMMSS or YYYYMMDD-HHMMSS)
-    let m = name.match(/(\d{4})(\d{2})(\d{2})[_\-](\d{2})(\d{2})(\d{2})/);
+    m = name.match(/(\d{4})(\d{2})(\d{2})[_\-](\d{2})(\d{2})(\d{2})/);
     if (m) {
         return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
     }
@@ -58,7 +66,7 @@ const SavedVideos = () => {
     const [search, setSearch]           = useState("");
     const playerRef = useRef(null);
 
-    useEffect(() => {
+    const fetchVideos = () => {
         axios.get(`${API_BASE}/videos`, {
             headers: { Authorization: `Bearer ${accessToken}` },
         })
@@ -73,7 +81,37 @@ const SavedVideos = () => {
         })
         .catch(err => console.error("Błąd pobierania wideo:", err))
         .finally(() => setLoading(false));
+    };
+
+    useEffect(() => {
+        fetchVideos();
     }, []);
+
+    const handleDeleteVideo = async (name) => {
+        if (!window.confirm(`Usunąć nagranie "${name}"?`)) return;
+        try {
+            await axios.delete(`${API_BASE}/videos/${encodeURIComponent(name)}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            if (selectedVideo?.name === name) setSelectedVideo(null);
+            fetchVideos();
+        } catch (err) {
+            console.error("Błąd usuwania wideo:", err);
+        }
+    };
+
+    const handleDeleteAllVideos = async () => {
+        if (!window.confirm("Usunąć wszystkie zapisane nagrania?")) return;
+        try {
+            await axios.delete(`${API_BASE}/videos`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            setSelectedVideo(null);
+            fetchVideos();
+        } catch (err) {
+            console.error("Błąd usuwania wszystkich wideo:", err);
+        }
+    };
 
     useEffect(() => {
         if (selectedVideo && playerRef.current) {
@@ -90,9 +128,20 @@ const SavedVideos = () => {
     return (
         <Layout>
             <Box sx={{ p: 3, maxWidth: 860, mx: "auto" }}>
-                <Typography variant="h5" fontWeight="bold" sx={{ mb: 2 }}>
-                    Zapisane wideo
-                </Typography>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+                    <Typography variant="h5" fontWeight="bold">
+                        Zapisane wideo
+                    </Typography>
+                    {videos.length > 0 && (
+                        <Button
+                            size="small" color="error" variant="outlined"
+                            startIcon={<DeleteSweepIcon />}
+                            onClick={handleDeleteAllVideos}
+                        >
+                            Usuń wszystkie
+                        </Button>
+                    )}
+                </Box>
 
                 {/* Inline player */}
                 {selectedVideo && (
@@ -197,6 +246,16 @@ const SavedVideos = () => {
                                                     borderRadius: 1, p: 0.5,
                                                 }}>
                                                 <DownloadIcon sx={{ fontSize: "1rem" }} />
+                                            </IconButton>
+
+                                            <IconButton size="small" title="Usuń"
+                                                onClick={() => handleDeleteVideo(v.name)}
+                                                sx={{
+                                                    color: "#8b949e", bgcolor: "#161b22",
+                                                    "&:hover": { bgcolor: "#da3633", color: "#fff" },
+                                                    borderRadius: 1, p: 0.5,
+                                                }}>
+                                                <DeleteIcon sx={{ fontSize: "1rem" }} />
                                             </IconButton>
                                         </Box>
                                     </React.Fragment>

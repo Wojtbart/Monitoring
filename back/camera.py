@@ -1,6 +1,9 @@
 import cv2
 import sys
+import time
 from datetime import datetime
+
+STREAM_FPS = 15
 
 
 class Camera:
@@ -58,6 +61,7 @@ class Camera:
                     b'--frame\r\n'
                     b'Content-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n'
                 )
+                time.sleep(1 / STREAM_FPS)
         finally:
             if self._cap:
                 self._cap.release()

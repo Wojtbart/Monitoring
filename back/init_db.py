@@ -35,7 +35,7 @@ with app.app_context():
     # Seed konta admin jeśli brak użytkowników
     if not Users.query.first():
         admin_pass = generate_password_hash('admin123', method='pbkdf2:sha256')
-        Users.add_user('admin', admin_pass, isadmin=True)
+        Users.add_user('admin', admin_pass, is_admin=True)
         print('[init_db] Konto admin utworzone (login: admin, hasło: admin123).')
         print('[init_db] ZMIEŃ HASŁO po pierwszym logowaniu!')
     else:

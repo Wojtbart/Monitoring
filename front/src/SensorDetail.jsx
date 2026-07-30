@@ -118,10 +118,10 @@ export default function SensorDetail() {
 
                 <Box sx={{
                     display: "flex", alignItems: "center", gap: 2, p: 2, mb: 2,
-                    bgcolor: "#1a1a2e", borderRadius: 1.5,
+                    bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5,
                 }}>
                     <Icon sx={{ color: cfg.color, fontSize: 40 }} />
-                    <Typography variant="h3" sx={{ color: "white", fontWeight: "bold" }}>
+                    <Typography variant="h3" sx={{ color: "#1a1a2e", fontWeight: "bold" }}>
                         {value != null ? `${value}${cfg.unit}` : "—"}
                     </Typography>
                     {status && (
@@ -133,8 +133,8 @@ export default function SensorDetail() {
                     )}
                 </Box>
 
-                <Box sx={{ bgcolor: "#1a1a2e", borderRadius: 1.5, p: 2, mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ color: "#c9d1d9", mb: 1 }}>
+                <Box sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: "#333", fontWeight: "bold", mb: 1 }}>
                         Progi alarmowe ({cfg.unit})
                     </Typography>
                     <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
@@ -167,6 +167,8 @@ export default function SensorDetail() {
                             <YAxis stroke="#8b949e" fontSize={10} domain={["auto", "auto"]} />
                             <Tooltip
                                 contentStyle={{ background: "#161b22", border: "1px solid #30363d" }}
+                                labelStyle={{ color: "#c9d1d9" }}
+                                itemStyle={{ color: cfg.color }}
                                 formatter={val => [`${val}${cfg.unit}`, "Wartość"]}
                             />
                             <Line type="monotone" dataKey="value" name="Wartość" stroke={cfg.color} dot={false} strokeWidth={2} />

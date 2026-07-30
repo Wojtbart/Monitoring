@@ -25,6 +25,40 @@ import AccessTimeIcon from "@mui/icons-material/AccessTime";
 import AccessAlarmOutlinedIcon from "@mui/icons-material/AccessAlarmOutlined";
 import BedtimeOutlinedIcon from "@mui/icons-material/BedtimeOutlined";
 import LocalPhoneOutlinedIcon from "@mui/icons-material/LocalPhoneOutlined";
+import PersonIcon from "@mui/icons-material/Person";
+import LocalFireDepartmentIcon from "@mui/icons-material/LocalFireDepartment";
+import GasMeterIcon from "@mui/icons-material/GasMeter";
+import SensorDoorIcon from "@mui/icons-material/SensorDoor";
+import WaterIcon from "@mui/icons-material/Water";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+
+function BooleanSensorCard({ icon, label, value, alertLabel, okLabel }) {
+    return (
+        <Card variant="outlined" sx={{
+            p: 2, borderRadius: 2, display: "flex", flexDirection: "column", gap: 0.75,
+            borderColor: value ? "#f44336" : "#e0e0e0",
+            bgcolor: value ? "#fff5f5" : "white",
+            transition: "all 0.3s",
+        }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                <Box sx={{ color: value ? "#f44336" : "text.secondary", display: "flex" }}>
+                    {icon}
+                </Box>
+                <Typography variant="caption" color={value ? "error" : "text.secondary"} fontWeight="bold">
+                    {label}
+                </Typography>
+            </Box>
+            <Chip
+                size="small"
+                icon={value ? <WarningAmberIcon /> : <CheckCircleIcon />}
+                label={value ? alertLabel : okLabel}
+                color={value ? "error" : "success"}
+                sx={{ width: "fit-content", fontWeight: "bold" }}
+            />
+        </Card>
+    );
+}
 
 const Settings = () => {
     const acccesToken = localStorage.getItem("JWT");
@@ -53,11 +87,27 @@ const Settings = () => {
         dayjs().hour(0).minute(0)
     );
 
+    const [envData, setEnvData] = useState({
+        motion: false, fire: false, gas: false, door: false, water: false,
+    });
+
+    useEffect(() => {
+        const fetchEnv = async () => {
+            try {
+                const res = await axios.get(`${API_BASE}/realTimeData`);
+                setEnvData(res.data);
+            } catch (_) {}
+        };
+        fetchEnv();
+        const iv = setInterval(fetchEnv, 5000);
+        return () => clearInterval(iv);
+    }, []);
+
     const zeroAM = dayjs().set("hour", 0).startOf("hour");
     const tvelveAm = dayjs().set("hour", 12).startOf("hour");
 
     const handleBackToHome = async () => {
-        navigate("/home");
+        navigate("/");
     };
 
     const addPhoneNumber = async () => {
@@ -352,6 +402,68 @@ const Settings = () => {
                             </Grid>
                         </div>
                     )}
+                </Card>
+
+                <Card
+                    variant="outlined"
+                    sx={{
+                        padding: 2,
+                        margin: "auto",
+                        marginTop: 2,
+                        borderRadius: 2,
+                        marginBottom: 2,
+                    }}
+                >
+                    <Typography variant="h5" gutterBottom>
+                        Monitoring środowiskowy serwerowni
+                    </Typography>
+                    <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6} md={4}>
+                            <BooleanSensorCard
+                                icon={<PersonIcon />}
+                                label="Ruch w pomieszczeniu"
+                                value={envData.motion}
+                                alertLabel="Wykryto ruch"
+                                okLabel="Brak ruchu"
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4}>
+                            <BooleanSensorCard
+                                icon={<LocalFireDepartmentIcon />}
+                                label="Czujnik pożaru"
+                                value={envData.fire}
+                                alertLabel="OGIEŃ!"
+                                okLabel="Brak"
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4}>
+                            <BooleanSensorCard
+                                icon={<GasMeterIcon />}
+                                label="Czujnik gazu/dymu"
+                                value={envData.gas}
+                                alertLabel="GAZ/DYM!"
+                                okLabel="Brak"
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4}>
+                            <BooleanSensorCard
+                                icon={<SensorDoorIcon />}
+                                label="Drzwi wejściowe"
+                                value={envData.door}
+                                alertLabel="Otwarte"
+                                okLabel="Zamknięte"
+                            />
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4}>
+                            <BooleanSensorCard
+                                icon={<WaterIcon />}
+                                label="Czujnik wody"
+                                value={envData.water}
+                                alertLabel="WODA!"
+                                okLabel="Brak"
+                            />
+                        </Grid>
+                    </Grid>
                 </Card>
 
                 <Paper
