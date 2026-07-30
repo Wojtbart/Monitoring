@@ -15,6 +15,29 @@ Monitoring/
 └── front/      frontend React (interfejs użytkownika)
 ```
 
+### Struktura frontendu
+
+```
+front/src/
+├── main.jsx            punkt wejścia (ReactDOM.render)
+├── App.jsx              routing (react-router-dom)
+├── Layout.jsx / .css     wspólny layout (pasek górny, menu boczne, wylogowanie)
+├── api.js                API_BASE (adres backendu, z .env)
+├── LoginPage.jsx          logowanie
+├── RegisterPage.jsx       rejestracja użytkownika (tylko admin)
+├── Home.jsx / .css        test urządzenia
+├── FloorPlan.jsx          rzut serwerowni (react-konva), strona główna ("/")
+├── ServerRack.jsx         widok pojedynczej szafy rack
+├── SensorDetail.jsx       szczegóły + historia czujnika per-urządzenie (recharts)
+├── Camera.jsx             podgląd kamery (MJPEG) + sterowanie nagrywaniem
+├── SavedVideos.jsx        lista zapisanych nagrań
+├── Settings.jsx           ustawienia systemowe
+├── Logs.jsx / .css        logi systemowe
+└── assets/monitor.png     ikona urządzenia w widoku rack
+```
+
+Routing (`App.jsx`): `/loginPage`, `/registerUser`, `/testDevice`, `/camera`, `/savedVideos`, `/settings`, `/logs`, `/rack/:rackId`, `/rack/:rackId/unit/:unit/sensor/:type`, `/rzut` i `/` (oba renderują `FloorPlan`).
+
 ## Funkcje
 
 - **Widok rzutu serwerowni** — graficzna wizualizacja pomieszczenia z szafami rack i czujnikami (pożar, gaz, drzwi, ruch, zalanie), strona główna aplikacji.
@@ -67,3 +90,7 @@ Zobacz `back/.env.example` i `front/.env.example`. Pliki `.env` (z prawdziwymi w
 ## Znane ograniczenia
 
 - Czujniki (poza kamerą) są aktualnie mockowane losowo — obsługa prawdziwego sprzętu (RPi GPIO, DHT22) jest zakomentowana w `back/sensors.py`, gotowa do podłączenia.
+- Nazwy tras backendu mieszają konwencje RPC/REST w kilku miejscach (np. historyczne endpointy sprzed refaktoryzacji) — do ujednolicenia przy kolejnej refaktoryzacji API.
+- `npm audit` we `front/` zgłasza 8 podatności (2 moderate, 6 high), wszystkie w zależnościach pośrednich:
+  - `react-router`/`react-router-dom` (moderate) — open redirect i podatność deserializacji błędów SSR; projekt nie używa SSR. Fix istnieje dopiero w wersji 7.x (aktualny 6.30.4 to najnowszy patch gałęzi 6) — wymaga `npm audit fix --force` i migracji API v6→v7, breaking change.
+  - `brace-expansion` przez `eslint`/`minimatch` (high, tylko devDependency, nie trafia do builda produkcyjnego) — wymaga `npm audit fix --force` (breaking change: eslint 10).
