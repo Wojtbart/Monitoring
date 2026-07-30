@@ -32,7 +32,8 @@ class User(db.Model):
             db.session.commit()
             return True
         return False
-        
+
+
 # tabela w której będziemy zapisywać layouty
 class Layout(db.Model):
     __tablename__ = 'layouts'
@@ -69,7 +70,6 @@ class PhoneNumber(db.Model):
         return False
 
 
-
 class Setting(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True)
@@ -100,7 +100,6 @@ class Setting(db.Model):
             db.session.commit()
             return True
         return False
-
 
 
 class Log(db.Model):

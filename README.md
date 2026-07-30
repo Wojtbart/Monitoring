@@ -54,7 +54,7 @@ cd back
 python -m pytest -v
 ```
 
-Testy znajdują się w `back/tests/` (konfiguracja w `back/pytest.ini`).
+Testy znajdują się w `back/tests/` (konfiguracja w `back/tests/pytest.ini`).
 
 ## Baza danych
 
