@@ -1,7 +1,6 @@
 /* eslint-disable react/prop-types */
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { AdminProvider } from "./AdminContext";
 import axios from "axios";
 import { API_BASE } from "./api";
 import {
@@ -28,8 +27,6 @@ import NewspaperIcon from "@mui/icons-material/Newspaper";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
-import AccountTreeIcon from '@mui/icons-material/AccountTree';
-import DnsIcon from '@mui/icons-material/Dns';
 import HomeIcon from "@mui/icons-material/Home";
 import "./Layout.css";
 
@@ -104,14 +101,6 @@ const Layout = ({ children }) => {
         navigate("/logs");
     };
 
-    const handleDiagram = () => {
-        navigate("/diagram");
-    };
-
-    const handleRack = () => {
-        navigate("/rack");
-    };
-
     const handleRegister = () => {
         if (isAdmin) {
             navigate("/registerUser");
@@ -129,8 +118,7 @@ const Layout = ({ children }) => {
 
     return (
         <>
-            <AdminProvider value={isAdmin}>
-                <div className="containerBox">
+            <div className="containerBox">
                     <AppBar position="static" className="header">
                         <Toolbar>
                             <IconButton
@@ -237,8 +225,7 @@ const Layout = ({ children }) => {
                             {new Date().getFullYear()} Monitoring System
                         </Typography>
                     </Box>
-                </div>
-            </AdminProvider>
+            </div>
         </>
     );
 };

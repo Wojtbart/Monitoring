@@ -15,7 +15,6 @@
     "@mui/icons-material": "^6.1.5",
     "@mui/material": "^6.1.4",
     "@mui/x-date-pickers": "^7.21.0",
-    "@xyflow/react": "^12.8.5",
     "axios": "^1.7.7",
     "dayjs": "^1.11.13",
     "konva": "^10.3.0",
@@ -23,7 +22,6 @@
     "react-dom": "^18.3.1",
     "react-konva": "^18.2.16",
     "react-router-dom": "^6.27.0",
-    "reactflow": "^11.11.4",
     "recharts": "^3.10.0"
   },
   "devDependencies": {
