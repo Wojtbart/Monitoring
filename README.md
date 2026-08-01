@@ -5,7 +5,7 @@ Aplikacja webowa do monitorowania serwerowni: podgląd czujników (temperatura, 
 ## Stack technologiczny
 
 - **Backend:** Python / Flask, Flask-SQLAlchemy (SQLite), Flask-JWT-Extended (autoryzacja), OpenCV (kamera)
-- **Frontend:** React (Vite), Material UI, react-konva (wizualizacja rzutu serwerowni), recharts (wykresy)
+- **Frontend:** React (Vite), Material UI, react-router-dom v7 (routing), react-konva (wizualizacja rzutu serwerowni), recharts (wykresy)
 
 ## Struktura repo
 
@@ -91,6 +91,6 @@ Zobacz `back/.env.example` i `front/.env.example`. Pliki `.env` (z prawdziwymi w
 
 - Czujniki (poza kamerą) są aktualnie mockowane losowo — obsługa prawdziwego sprzętu (RPi GPIO, DHT22) jest zakomentowana w `back/sensors.py`, gotowa do podłączenia.
 - Nazwy tras backendu mieszają konwencje RPC/REST w kilku miejscach (np. historyczne endpointy sprzed refaktoryzacji) — do ujednolicenia przy kolejnej refaktoryzacji API.
-- `npm audit` we `front/` zgłasza 8 podatności (2 moderate, 6 high), wszystkie w zależnościach pośrednich:
-  - `react-router`/`react-router-dom` (moderate) — open redirect i podatność deserializacji błędów SSR; projekt nie używa SSR. Fix istnieje dopiero w wersji 7.x (aktualny 6.30.4 to najnowszy patch gałęzi 6) — wymaga `npm audit fix --force` i migracji API v6→v7, breaking change.
-  - `brace-expansion` przez `eslint`/`minimatch` (high, tylko devDependency, nie trafia do builda produkcyjnego) — wymaga `npm audit fix --force` (breaking change: eslint 10).
+- `npm audit` we `front/` zgłasza 8 podatności (wszystkie high), w zależnościach pośrednich:
+  - `brace-expansion` przez `eslint`/`minimatch` (tylko devDependency, nie trafia do builda produkcyjnego) — wymaga `npm audit fix --force` (breaking change: eslint 10).
+  - `react-router` 7.12.0–8.2.0 (RSC Mode CSRF Bypass) — dotyczy trybu RSC/data-router (loadery, akcje, server components), którego ten projekt nie używa (tylko deklaratywny routing: `BrowserRouter`/`Routes`/`Route`). Najnowsza wydana wersja (7.18.2, aktualnie zainstalowana) wciąż mieści się w podatnym zakresie — patch jeszcze nie wyszedł; `npm audit fix --force` proponuje downgrade do 7.11.0, co przywróciłoby starszą, już załataną lukę (open redirect / SSR deserialize), więc świadomie tego nie robimy.
