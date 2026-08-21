@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app import app
-from models import db, Setting, User
+from models import db, Setting, User, NotificationRule
 from werkzeug.security import generate_password_hash
 
 with app.app_context():
@@ -39,5 +39,9 @@ with app.app_context():
         print('[init_db] ZMIEŃ HASŁO po pierwszym logowaniu!')
     else:
         print('[init_db] Użytkownicy już istnieją — pominięto seed.')
+
+    # Seed domyślnych reguł powiadomień (idempotentne)
+    NotificationRule.seed_defaults()
+    print('[init_db] Reguły powiadomień zseedowane.')
 
 print('[init_db] Gotowe.')

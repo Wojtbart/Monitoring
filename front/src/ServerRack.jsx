@@ -9,29 +9,43 @@ import {
     DialogActions, Alert, FormControl, InputLabel, Switch, FormControlLabel,
 } from "@mui/material";
 import EditIcon from "@mui/icons-material/Edit";
+import DeleteIcon from "@mui/icons-material/Delete";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import NetworkPingIcon from "@mui/icons-material/NetworkPing";
 import SaveIcon from "@mui/icons-material/Save";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ThermostatIcon from "@mui/icons-material/Thermostat";
 import WaterDropIcon from "@mui/icons-material/WaterDrop";
+import RackVisual3D, { DEVICE_TYPES } from "./RackVisual3D";
 
-const RACK_PRESETS = [4, 8, 12, 16, 24, 42];
+const RACK_PRESETS = [16, 32, 42];
 
-const DEVICE_TYPES = {
-    server:  { label: "Serwer",      color: "#1e88e5" },
-    switch:  { label: "Switch",      color: "#43a047" },
-    router:  { label: "Router",      color: "#8e24aa" },
-    pdu:     { label: "PDU",         color: "#fb8c00" },
-    patch:   { label: "Patch panel", color: "#546e7a" },
-    ups:     { label: "UPS",         color: "#e53935" },
-    firewall:{ label: "Firewall",    color: "#f4511e" },
-    empty:   { label: "Puste",       color: "#37474f" },
+const makeSlots = (count, existing = []) => {
+    const devices = existing.map(d => ({ height: 1, ...d }));
+    const result = [];
+    let unit = 1;
+    while (unit <= count) {
+        const device = devices.find(d => d.unit === unit);
+        if (device) {
+            result.push(device);
+            unit += Math.ceil(device.height);
+        } else {
+            result.push({ unit, name: "", type: "empty", active: true, height: 1 });
+            unit += 1;
+        }
+    }
+    return result;
 };
 
-const makeSlots = (count, existing = []) =>
-    Array.from({ length: count }, (_, i) => {
-        const unit = i + 1;
-        return existing.find(s => s.unit === unit) || { unit, name: "", type: "empty", active: true };
-    });
+const wouldOverlap = (currentSlots, editUnit, height) => {
+    const end = editUnit + height;
+    return currentSlots.some(s =>
+        s.unit !== editUnit &&
+        s.type !== "empty" &&
+        s.unit < end &&
+        editUnit < s.unit + (s.height || 1)
+    );
+};
 
 const getStatus = (sensor, slot) => {
     if (slot.type === "empty") return null;
@@ -60,7 +74,15 @@ function LED({ status }) {
     );
 }
 
-const COLS = "44px 70px 1fr 68px 68px 64px 72px";
+const COLS = "44px 70px 1fr 68px 68px 72px 64px 108px";
+
+const openManagement = address => {
+    if (!address) return;
+    const url = /^https?:\/\//i.test(address) ? address : `http://${address}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+};
+
+const extractHost = address => (address || "").split(":")[0].trim();
 
 function RackHeader() {
     const cell = label => (
@@ -71,12 +93,12 @@ function RackHeader() {
     return (
         <Box sx={{ display: "grid", gridTemplateColumns: COLS, gap: 1, px: 2, py: 1, bgcolor: "#161b22", borderBottom: "1px solid #30363d" }}>
             {cell("UNIT")} {cell("TYP")} {cell("URZĄDZENIE")}
-            {cell("TEMP")} {cell("WILG")} {cell("STATUS")} <Box />
+            {cell("TEMP")} {cell("WILG")} {cell("PING")} {cell("STATUS")} <Box />
         </Box>
     );
 }
 
-function RackSlot({ slot, sensor, onEdit }) {
+function RackSlot({ slot, sensor, onEdit, onDelete, pingState, onPing }) {
     const status  = getStatus(sensor, slot);
     const dtype   = DEVICE_TYPES[slot.type] || DEVICE_TYPES.empty;
     const isEmpty = slot.type === "empty";
@@ -91,7 +113,9 @@ function RackSlot({ slot, sensor, onEdit }) {
             transition: "all 0.15s",
         }}>
             <Typography sx={{ color: "#484f58", fontFamily: "monospace", fontSize: "0.7rem" }}>
-                {String(slot.unit).padStart(2, "0")}U
+                {(slot.height || 1) > 1
+                    ? `${String(slot.unit).padStart(2, "0")}–${String(slot.unit + Math.ceil(slot.height) - 1).padStart(2, "0")}U`
+                    : `${String(slot.unit).padStart(2, "0")}U`}
             </Typography>
             <Typography sx={{ color: dtype.color, fontSize: "0.68rem", fontWeight: "bold" }}>
                 {dtype.label}
@@ -109,6 +133,30 @@ function RackSlot({ slot, sensor, onEdit }) {
             <Typography sx={{ color: isEmpty ? "#484f58" : "#42a5f5", fontFamily: "monospace", fontSize: "0.72rem" }}>
                 {isEmpty ? "—" : `${sensor.humidity}%`}
             </Typography>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                <IconButton
+                    size="small"
+                    disabled={isEmpty || !slot.management || pingState?.state === "loading"}
+                    onClick={() => onPing(slot.unit, slot.management)}
+                    sx={{
+                        p: 0.3,
+                        color: !isEmpty && slot.management ? "#c9d1d9" : "#3a4048",
+                        "&:hover": { color: "#2196f3" },
+                    }}
+                    title={slot.management ? `Ping ${extractHost(slot.management)}` : "Brak adresu management"}
+                >
+                    <NetworkPingIcon sx={{ fontSize: "0.85rem" }} />
+                </IconButton>
+                {pingState?.state === "loading" && (
+                    <Typography sx={{ color: "#8b949e", fontSize: "0.62rem", fontFamily: "monospace" }}>...</Typography>
+                )}
+                {pingState?.state === "ok" && (
+                    <Typography sx={{ color: "#4caf50", fontSize: "0.62rem", fontFamily: "monospace", fontWeight: "bold" }}>OK</Typography>
+                )}
+                {pingState?.state === "fail" && (
+                    <Typography sx={{ color: "#f44336", fontSize: "0.62rem", fontFamily: "monospace", fontWeight: "bold" }}>BRAK</Typography>
+                )}
+            </Box>
             <LED status={status} />
 
             <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
@@ -124,73 +172,36 @@ function RackSlot({ slot, sensor, onEdit }) {
                 >
                     <EditIcon sx={{ fontSize: "0.85rem" }} />
                 </IconButton>
+                {!isEmpty && (
+                    <IconButton
+                        size="small"
+                        disabled={!slot.management}
+                        onClick={() => openManagement(slot.management)}
+                        sx={{
+                            color: slot.management ? "#c9d1d9" : "#484f58",
+                            bgcolor: "#30363d", borderRadius: 1, p: 0.4,
+                            "&:hover": { bgcolor: "#2196f3", color: "#fff" },
+                            "&.Mui-disabled": { bgcolor: "#1c2128", color: "#3a4048" },
+                        }}
+                        title={slot.management || "Brak adresu management"}
+                    >
+                        <OpenInNewIcon sx={{ fontSize: "0.85rem" }} />
+                    </IconButton>
+                )}
+                {!isEmpty && (
+                    <IconButton
+                        size="small"
+                        onClick={() => onDelete(slot)}
+                        sx={{
+                            color: "#c9d1d9",
+                            bgcolor: "#30363d", borderRadius: 1, p: 0.4,
+                            "&:hover": { bgcolor: "#f44336", color: "#fff" },
+                        }}
+                    >
+                        <DeleteIcon sx={{ fontSize: "0.85rem" }} />
+                    </IconButton>
+                )}
             </Box>
-        </Box>
-    );
-}
-
-function RackVisual({ slots, rackLabel, rackSize, rackId }) {
-    const navigate = useNavigate();
-    return (
-        <Box sx={{ width: 190, flexShrink: 0, mt: 7 }}>
-            <Box sx={{
-                bgcolor: "#0d1117", border: "3px solid #30363d",
-                borderRadius: 2, overflow: "hidden", boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
-                display: "flex", flexDirection: "column",
-            }}>
-                <Box sx={{ bgcolor: "#21262d", px: 1, py: 0.6, borderBottom: "2px solid #30363d", textAlign: "center" }}>
-                    <Typography sx={{ color: "#8b949e", fontSize: "0.7rem", fontFamily: "monospace", fontWeight: "bold" }}>
-                        {rackSize}U
-                    </Typography>
-                </Box>
-                {slots.map(slot => {
-                    const dtype = DEVICE_TYPES[slot.type] || DEVICE_TYPES.empty;
-                    const isEmpty = slot.type === "empty";
-                    return (
-                        <Box key={slot.unit} sx={{
-                            height: 36, display: "flex", alignItems: "center", justifyContent: "space-between",
-                            px: 1, bgcolor: isEmpty ? "#161b22" : dtype.color,
-                            opacity: isEmpty ? 0.5 : 0.9,
-                            borderBottom: "1px solid #0d1117",
-                        }}>
-                            <Typography sx={{ color: isEmpty ? "#484f58" : "#fff", fontSize: "0.7rem", fontFamily: "monospace" }}>
-                                {String(slot.unit).padStart(2, "0")}
-                            </Typography>
-                            {!isEmpty && (
-                                <Box sx={{ display: "flex", gap: 0.5 }}>
-                                    <Box
-                                        component="span"
-                                        onClick={() => navigate(`/rack/${rackId}/unit/${slot.unit}/sensor/temperature`)}
-                                        sx={{
-                                            cursor: "pointer", fontSize: "1.2rem", lineHeight: 1,
-                                            width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
-                                            borderRadius: "50%", "&:hover": { bgcolor: "rgba(255,255,255,0.25)" },
-                                        }}
-                                        title="Temperatura"
-                                    >
-                                        🌡️
-                                    </Box>
-                                    <Box
-                                        component="span"
-                                        onClick={() => navigate(`/rack/${rackId}/unit/${slot.unit}/sensor/humidity`)}
-                                        sx={{
-                                            cursor: "pointer", fontSize: "1.2rem", lineHeight: 1,
-                                            width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center",
-                                            borderRadius: "50%", "&:hover": { bgcolor: "rgba(255,255,255,0.25)" },
-                                        }}
-                                        title="Wilgotność"
-                                    >
-                                        💧
-                                    </Box>
-                                </Box>
-                            )}
-                        </Box>
-                    );
-                })}
-            </Box>
-            <Typography variant="caption" sx={{ display: "block", mt: 0.75, textAlign: "center", color: "text.secondary" }}>
-                Widok wizualny serwera
-            </Typography>
         </Box>
     );
 }
@@ -203,15 +214,19 @@ export default function ServerRack() {
     const rackLabel   = `Szafa ${rackNum}`;
 
     const accessToken = localStorage.getItem("JWT");
-    const [rackSize, setRackSize] = useState(24);
-    const [slots, setSlots]       = useState(() => makeSlots(24));
+    const [rackSize, setRackSize] = useState(42);
+    const [slots, setSlots]       = useState(() => makeSlots(42));
     const [sensor, setSensor]     = useState({
         temperature: 0, humidity: 0,
         fire: false, gas: false, water: false, motion: false, door: false,
     });
-    const [editSlot, setEditSlot] = useState(null);
-    const [editName, setEditName] = useState("");
-    const [editType, setEditType] = useState("server");
+    const [pingStatus, setPingStatus] = useState({});
+    const [editSlot, setEditSlot]     = useState(null);
+    const [editName, setEditName]     = useState("");
+    const [editType, setEditType]     = useState("server");
+    const [editHeight, setEditHeight] = useState(1);
+    const [editManagement, setEditManagement] = useState("");
+    const [editError, setEditError]   = useState("");
     const [saving, setSaving]     = useState(false);
     const [savedAt, setSavedAt]   = useState(null);
 
@@ -238,7 +253,7 @@ export default function ServerRack() {
                     localStorage.removeItem(STORAGE_KEY);
                     return;
                 }
-                const size = data.rackSize || data.slots?.length || 24;
+                const size = data.rackSize || data.slots?.length || 42;
                 setRackSize(size);
                 setSlots(makeSlots(size, data.slots || []));
             })
@@ -273,11 +288,50 @@ export default function ServerRack() {
         setEditSlot(slot.unit);
         setEditName(slot.name);
         setEditType(slot.type);
+        setEditHeight(slot.height || 1);
+        setEditManagement(slot.management || "");
+        setEditError("");
     };
 
     const confirmEdit = () => {
-        setSlots(prev => prev.map(s => s.unit === editSlot ? { ...s, name: editName, type: editType } : s));
+        const height = editType === "empty" ? 1 : editHeight;
+        if (editType !== "empty" && height < 0.5) {
+            setEditError("Wysokość minimum 0.5U");
+            return;
+        }
+        if (editSlot + height - 1 > rackSize) {
+            setEditError("Urządzenie wykracza poza szafę");
+            return;
+        }
+        if (editType !== "empty" && wouldOverlap(slots, editSlot, height)) {
+            setEditError("Zakres nachodzi na sąsiednie urządzenie");
+            return;
+        }
+        setSlots(prev => makeSlots(rackSize, [
+            ...prev.filter(s => s.unit !== editSlot),
+            { unit: editSlot, name: editName, type: editType, active: true, height, management: editManagement },
+        ]));
         setEditSlot(null);
+        setEditError("");
+    };
+
+    const deleteSlot = slot => {
+        setSlots(prev => makeSlots(rackSize, prev.filter(s => s.unit !== slot.unit)));
+    };
+
+    const handlePing = async (unit, address) => {
+        const host = extractHost(address);
+        if (!host) return;
+        setPingStatus(prev => ({ ...prev, [unit]: { state: "loading" } }));
+        try {
+            const { data } = await axios.get(`${API_BASE}/ping/${host}`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            const ok = (data.messages || []).some(m => /reply/i.test(m));
+            setPingStatus(prev => ({ ...prev, [unit]: { state: ok ? "ok" : "fail" } }));
+        } catch (_) {
+            setPingStatus(prev => ({ ...prev, [unit]: { state: "fail" } }));
+        }
     };
 
     const criticalAlert = sensor.fire || sensor.gas || sensor.water;
@@ -287,7 +341,18 @@ export default function ServerRack() {
     return (
         <Layout>
             <Box sx={{ p: 2, maxWidth: 1230, mx: "auto", display: "flex", gap: 2, alignItems: "flex-start" }}>
-                <RackVisual slots={slots} rackLabel={rackLabel} rackSize={rackSize} rackId={rackId} />
+                <Box sx={{ width: 220, flexShrink: 0, mt: 7 }}>
+                    <RackVisual3D
+                        slots={slots}
+                        rackSize={rackSize}
+                        rackLabel={rackLabel}
+                        width={190}
+                        onUnitClick={(unit, type) => navigate(`/rack/${rackId}/unit/${unit}/sensor/${type}`)}
+                    />
+                    <Typography variant="caption" sx={{ display: "block", mt: 0.75, textAlign: "center", color: "text.secondary" }}>
+                        Widok wizualny serwera
+                    </Typography>
+                </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                 {/* Header */}
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
@@ -364,7 +429,8 @@ export default function ServerRack() {
                         <RackHeader />
                         {slots.map(slot => (
                             <RackSlot key={slot.unit} slot={slot} sensor={sensor}
-                                onEdit={openEdit} />
+                                onEdit={openEdit} onDelete={deleteSlot}
+                                pingState={pingStatus[slot.unit]} onPing={handlePing} />
                         ))}
                 </Box>
 
@@ -375,7 +441,7 @@ export default function ServerRack() {
             </Box>
 
             {/* Edit dialog */}
-            <Dialog open={editSlot !== null} onClose={() => setEditSlot(null)} maxWidth="xs" fullWidth disablePortal>
+            <Dialog open={editSlot !== null} onClose={() => { setEditSlot(null); setEditError(""); }} maxWidth="xs" fullWidth disablePortal>
                 <DialogTitle>Slot {editSlot}U</DialogTitle>
                 <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: "16px !important" }}>
                     <Select value={editType} onChange={e => setEditType(e.target.value)} size="small" fullWidth>
@@ -391,9 +457,30 @@ export default function ServerRack() {
                         onKeyDown={e => e.key === "Enter" && confirmEdit()}
                         placeholder={editType === "empty" ? "Opcjonalna etykieta" : "np. Dell PowerEdge R740"}
                     />
+                    {editType !== "empty" && (
+                        <TextField
+                            label="Wysokość (U)"
+                            type="number"
+                            value={editHeight}
+                            onChange={e => setEditHeight(Math.max(0.5, parseFloat(e.target.value) || 0.5))}
+                            inputProps={{ step: 0.5, min: 0.5 }}
+                            size="small" fullWidth
+                        />
+                    )}
+                    {editType !== "empty" && (
+                        <TextField
+                            label="Adres management"
+                            value={editManagement}
+                            onChange={e => setEditManagement(e.target.value)}
+                            size="small" fullWidth
+                            onKeyDown={e => e.key === "Enter" && confirmEdit()}
+                            placeholder="np. 172.16.0.8:3004"
+                        />
+                    )}
+                    {editError && <Alert severity="error">{editError}</Alert>}
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setEditSlot(null)}>Anuluj</Button>
+                    <Button onClick={() => { setEditSlot(null); setEditError(""); }}>Anuluj</Button>
                     <Button onClick={confirmEdit} variant="contained">Zapisz</Button>
                 </DialogActions>
             </Dialog>

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
-import { Box, Button, Typography, Paper, Chip } from "@mui/material";
+import { Box, Button, Typography, Paper, Chip, IconButton } from "@mui/material";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import SaveIcon from "@mui/icons-material/Save";
 
@@ -58,11 +58,16 @@ const C = {
 };
 
 // ─── Rack layout (single row) ─────────────────────────────────────────────────
-const RACK_W = 0.6, RACK_D = 0.9, RACK_H = 2.1;
+const RACK_W = 0.45, RACK_D = 0.9, RACK_H = 1.9;
 const ROW_Z  = 0.8;
-const ALL_RACKS = [-2.5, -0.85, 0.85, 2.5].map((cx, i) => ({
-    id: `A${i}`, label: `Szafa ${i + 1}`, cx, z: ROW_Z,
-}));
+const ALL_RACKS = [
+    { id: "A0", cx: -2.8, z: ROW_Z },
+    { id: "A4", cx: -1.5, z: ROW_Z },
+    { id: "A1", cx: -0.5, z: ROW_Z },
+    { id: "A2", cx:  0.5, z: ROW_Z },
+    { id: "A5", cx:  1.5, z: ROW_Z },
+    { id: "A3", cx:  2.8, z: ROW_Z },
+];
 
 // ─── Fixed sensors ────────────────────────────────────────────────────────────
 const SENSOR_DEFS = [
@@ -73,6 +78,20 @@ const SENSOR_DEFS = [
 ];
 
 const ICONS = { fire: "🔥", gas: "💨", water: "💧", motion: "👁", door: "🚪", temp: "🌡️" };
+
+// Typy czujników dostępne do ręcznego dodania z paska nad rzutem — mocowanie
+// (floor/wy) odzwierciedla konwencję domyślnych czujników danego typu.
+const ADDABLE_SENSOR_TYPES = ["fire", "gas", "water", "motion"];
+const SENSOR_TYPE_LABELS = { fire: "Pożar", gas: "Gaz/Dym", water: "Zalanie", motion: "Ruch" };
+const SENSOR_TYPE_MOUNT = {
+    fire: {},
+    gas: {},
+    water: { floor: true },
+    motion: { wy: ROOM.H - 1.3 },
+};
+
+// Czujniki podłogowe (zalanie) zawsze stoją na podłodze — pion ignorowany.
+const effectiveSensorWy = def => def.floor ? 0.05 : (def.wy ?? ROOM.H - 0.02);
 
 // ─── RackBox ──────────────────────────────────────────────────────────────────
 function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, active, onTogglePower }) {
@@ -97,7 +116,7 @@ function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, acti
 
     const smX = (ftl.x + ftr.x) / 2;
     const smY = ftl.y + (fbl.y - ftl.y) * 0.5;
-    const sR  = Math.max(4, pw * 0.14);
+    const sR  = Math.max(4, pw * 0.22);
 
     const pwBtnX = fbl.x + 5;
     const pwBtnY = fbl.y - 6;
@@ -188,9 +207,9 @@ function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, acti
     );
 }
 
-// ─── Fixed sensor ─────────────────────────────────────────────────────────────
-function Sensor({ def, proj, alert }) {
-    const wy = def.floor ? 0.05 : (def.wy ?? ROOM.H - 0.02);
+// ─── Sensor (domyślny lub dodany, oba przeciągalne) ────────────────────────────
+function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick }) {
+    const wy = effectiveSensorWy(def);
     const sp = proj(def.wx, wy, def.wz);
     const color = alert ? C.sensorE : C.sensorOk;
     const R = 5;
@@ -198,7 +217,16 @@ function Sensor({ def, proj, alert }) {
     const lineEndY = def.floor ? sp.y - 6 : sp.y + 6;
     const labelY = def.floor ? sp.y - R - 10 : sp.y + R + 2;
     return (
-        <Group>
+        <Group
+            onMouseDown={e => { e.cancelBubble = true; onDragStart && onDragStart(e); }}
+            onDblClick={onDblClick}
+            onMouseEnter={e => { e.target.getStage().container().style.cursor = "grab"; }}
+            onMouseLeave={e => { e.target.getStage().container().style.cursor = "default"; }}
+            onContextMenu={e => {
+                e.evt.preventDefault();
+                if (deletable) onDelete && onDelete(def.id);
+            }}
+        >
             {hasLine && (
                 <Line points={[sp.x, sp.y, sp.x, lineEndY]}
                     stroke={color} strokeWidth={0.8} dash={[2, 2]} />
@@ -236,6 +264,9 @@ export default function FloorPlan() {
     const [rackActive, setRackActive] = useState(() =>
         Object.fromEntries(ALL_RACKS.map(r => [r.id, true]))
     );
+    const [sensorPosOverride, setSensorPosOverride] = useState({});
+    const [sensorWyOverride, setSensorWyOverride] = useState({});
+    const [customSensors, setCustomSensors] = useState([]);
     const [saving, setSaving]   = useState(false);
     const [savedAt, setSavedAt] = useState(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -272,8 +303,23 @@ export default function FloorPlan() {
                     localStorage.removeItem(FLOORPLAN_KEY);
                     return;
                 }
-                if (data.rackXPos) setRackXPos(data.rackXPos);
+                if (
+                    data.rackXPos &&
+                    ALL_RACKS.every(r => data.rackXPos[r.id] !== undefined) &&
+                    ALL_RACKS.map(r => data.rackXPos[r.id]).sort((a, b) => a - b)
+                        .every((v, i, arr) => i === 0 || v - arr[i - 1] >= RACK_W)
+                ) {
+                    // Zapis sprzed dodania A4/A5 (brak pozycji dla wszystkich
+                    // szaf) albo zapis utrwalający wcześniejszy bug (szafy
+                    // nachodzące na siebie) dałby zepsuty układ. Odrzucamy
+                    // taki zapis w całości i zostajemy przy świeżych
+                    // domyślnych pozycjach zamiast go stosować.
+                    setRackXPos(data.rackXPos);
+                }
                 if (data.rackActive) setRackActive(data.rackActive);
+                if (data.sensorPosOverride) setSensorPosOverride(data.sensorPosOverride);
+                if (data.sensorWyOverride) setSensorWyOverride(data.sensorWyOverride);
+                if (data.customSensors) setCustomSensors(data.customSensors);
             })
             .catch(() => {});
     }, []);
@@ -281,7 +327,7 @@ export default function FloorPlan() {
     const saveLayout = async () => {
         setSaving(true);
         const tok = localStorage.getItem("JWT");
-        const payload = { type: "floorplan_persp", rackXPos, rackActive };
+        const payload = { type: "floorplan_persp", rackXPos, rackActive, sensorPosOverride, sensorWyOverride, customSensors };
         const headers = { Authorization: `Bearer ${tok}` };
         try {
             const id = localStorage.getItem(FLOORPLAN_KEY);
@@ -314,35 +360,92 @@ export default function FloorPlan() {
     const fixX = W / 2 * (1 - fixedScale);
     const fixY = H / 2 - roomCenterY * fixedScale;
 
-    // ── Rack drag ──────────────────────────────────────────────────────────────
+    // ── Drag (szafy i czujniki, tylko oś X) ────────────────────────────────────
     const stageXToWorld = (sx, wz) =>
         (sx - vpX) / (FOCAL / Math.max(wz - EYE.z, 0.01));
+    const stageYToWorld = (sy, wz) =>
+        EYE.y + (vpY - sy) / (FOCAL / Math.max(wz - EYE.z, 0.01));
 
-    const handleRackDragStart = (e, rack) => {
+    // Stała głębokość referencyjna dla WSZYSTKICH przeciąganych obiektów —
+    // liczenie dx po własnej głębokości obiektu (bliżej/dalej kamery) dawało
+    // różną czułość przeciągania w zależności od tego co się przesuwa (np.
+    // czujnik przy tylnej ścianie ledwo się ruszał), myląco ograniczone.
+    const DRAG_REF_Z = ROW_Z;
+
+    const startDrag = (e, kind, id, wx, wy, verticalEnabled) => {
         const rect   = containerRef.current.getBoundingClientRect();
         const stageX = (e.evt.clientX - rect.left - fixX) / fixedScale;
+        const stageY = (e.evt.clientY - rect.top - fixY) / fixedScale;
         dragRef.current = {
-            id: rack.id, rackZ: rack.z,
-            startStageX: stageX, startWorldX: rackXPos[rack.id],
+            kind, id, verticalEnabled,
+            startStageX: stageX, startStageY: stageY,
+            startWorldX: wx, startWorldY: wy,
         };
         setIsDragging(true);
     };
+
+    const handleRackDragStart = (e, rack) =>
+        startDrag(e, "rack", rack.id, rackXPos[rack.id], null, false);
+    const handleDefaultSensorDragStart = (e, sensor) =>
+        startDrag(e, "defaultSensor", sensor.id, sensor.wx, effectiveSensorWy(sensor), !sensor.floor);
+    const handleCustomSensorDragStart = (e, sensor) =>
+        startDrag(e, "customSensor", sensor.id, sensor.wx, effectiveSensorWy(sensor), !sensor.floor);
 
     const handleMouseMove = e => {
         if (!dragRef.current) return;
         const rect   = containerRef.current.getBoundingClientRect();
         const stageX = (e.evt.clientX - rect.left - fixX) / fixedScale;
-        const { id, rackZ, startStageX, startWorldX } = dragRef.current;
-        const dx    = stageXToWorld(stageX, rackZ) - stageXToWorld(startStageX, rackZ);
-        const newCx = Math.max(-ROOM.W / 2 + RACK_W, Math.min(ROOM.W / 2 - RACK_W, startWorldX + dx));
-        setRackXPos(prev => ({ ...prev, [id]: newCx }));
+        const stageY = (e.evt.clientY - rect.top - fixY) / fixedScale;
+        const { kind, id, verticalEnabled, startStageX, startStageY, startWorldX, startWorldY } = dragRef.current;
+        const dx = stageXToWorld(stageX, DRAG_REF_Z) - stageXToWorld(startStageX, DRAG_REF_Z);
+
+        if (kind === "rack") {
+            const newCx = Math.max(-ROOM.W / 2 + RACK_W, Math.min(ROOM.W / 2 - RACK_W, startWorldX + dx));
+            setRackXPos(prev => ({ ...prev, [id]: newCx }));
+        } else {
+            const newWx = Math.max(-ROOM.W / 2 + 0.2, Math.min(ROOM.W / 2 - 0.2, startWorldX + dx));
+            let newWy = startWorldY;
+            if (verticalEnabled) {
+                const dy = stageYToWorld(stageY, DRAG_REF_Z) - stageYToWorld(startStageY, DRAG_REF_Z);
+                newWy = Math.max(0.15, Math.min(ROOM.H - 0.05, startWorldY + dy));
+            }
+            if (kind === "defaultSensor") {
+                setSensorPosOverride(prev => ({ ...prev, [id]: newWx }));
+                if (verticalEnabled) setSensorWyOverride(prev => ({ ...prev, [id]: newWy }));
+            } else if (kind === "customSensor") {
+                setCustomSensors(prev => prev.map(s => s.id === id
+                    ? { ...s, wx: newWx, ...(verticalEnabled ? { wy: newWy } : {}) }
+                    : s));
+            }
+        }
     };
 
     const handleMouseUp = () => { dragRef.current = null; setIsDragging(false); };
 
     const toggleRackPower = id => setRackActive(prev => ({ ...prev, [id]: !prev[id] }));
 
-    const effectiveRacks = ALL_RACKS.map(r => ({ ...r, cx: rackXPos[r.id] ?? r.cx }));
+    const addSensor = type => {
+        const id = `custom-${type}-${Date.now()}`;
+        setCustomSensors(prev => [...prev, {
+            id, type, wx: 0, wz: ROOM.D / 2,
+            label: SENSOR_TYPE_LABELS[type],
+            ...SENSOR_TYPE_MOUNT[type],
+        }]);
+    };
+
+    const deleteCustomSensor = id =>
+        setCustomSensors(prev => prev.filter(s => s.id !== id));
+
+    const effectiveDefaultSensors = SENSOR_DEFS.map(s => ({
+        ...s,
+        wx: sensorPosOverride[s.id] ?? s.wx,
+        wy: sensorWyOverride[s.id] ?? s.wy,
+    }));
+
+    const effectiveRacks = ALL_RACKS
+        .map(r => ({ ...r, cx: rackXPos[r.id] ?? r.cx }))
+        .sort((a, b) => a.cx - b.cx)
+        .map((r, i) => ({ ...r, label: `Szafa ${i + 1}` }));
 
     // ── Room geometry ──────────────────────────────────────────────────────────
     const ffl = proj(-ROOM.W / 2, 0,      0);
@@ -407,12 +510,21 @@ export default function FloorPlan() {
                 <Paper elevation={2} sx={{ display: "flex", alignItems: "center", gap: 1, px: 2, py: 0.75, flexShrink: 0 }}>
                     <Typography variant="subtitle2" fontWeight="bold">Serwerownia — widok</Typography>
                     {anyAlert && <Chip label="ALARM" color="error" size="small" icon={<WarningAmberIcon />} />}
+                    <Box sx={{ display: "flex", gap: 0.25, ml: 1 }}>
+                        {ADDABLE_SENSOR_TYPES.map(type => (
+                            <IconButton key={type} size="small" onClick={() => addSensor(type)}
+                                title={`Dodaj czujnik: ${SENSOR_TYPE_LABELS[type]}`}
+                                sx={{ fontSize: "1rem", p: 0.5 }}>
+                                {ICONS[type]}
+                            </IconButton>
+                        ))}
+                    </Box>
                     <Box sx={{ flex: 1 }} />
                     <Chip size="small"
                         label={doorOpen ? "Drzwi OTWARTE" : "Drzwi zamknięte"}
                         color={doorOpen ? "error" : "success"} variant="outlined" />
                     <Typography variant="caption" color="text.secondary">
-                        Przeciągnij szafę · 2×klik=widok serwera
+                        Przeciągnij szafę/czujnik · 2×klik szafy = edycja · PPM = usuń dodany czujnik
                     </Typography>
                     {savedAt && (
                         <Typography variant="caption" color="text.secondary">
@@ -475,11 +587,6 @@ export default function FloorPlan() {
                                 );
                             })}
 
-                            {/* Fixed sensors */}
-                            {SENSOR_DEFS.map(s => (
-                                <Sensor key={s.id} def={s} proj={proj} alert={getAlert(s.type)} />
-                            ))}
-
                             {/* Racks (single row) */}
                             {effectiveRacks.map(rack => (
                                 <RackBox key={rack.id} rack={rack} proj={proj}
@@ -490,8 +597,25 @@ export default function FloorPlan() {
                                     onTogglePower={toggleRackPower} />
                             ))}
 
+                            {/* Domyślne czujniki (przesuwalne, nieusuwalne) — rysowane NAD
+                                szafami, żeby przeciągnięty czujnik nigdy nie znikał za rackiem */}
+                            {effectiveDefaultSensors.map(s => (
+                                <Sensor key={s.id} def={s} proj={proj} alert={getAlert(s.type)}
+                                    onDragStart={e => handleDefaultSensorDragStart(e, s)}
+                                    onDblClick={() => navigate("/settings#powiadomienia")}
+                                    deletable={false} />
+                            ))}
+
+                            {/* Dodane czujniki (przesuwalne, usuwalne prawym klikiem) */}
+                            {customSensors.map(s => (
+                                <Sensor key={s.id} def={s} proj={proj} alert={getAlert(s.type)}
+                                    onDragStart={e => handleCustomSensorDragStart(e, s)}
+                                    onDblClick={() => navigate("/settings#powiadomienia")}
+                                    deletable onDelete={deleteCustomSensor} />
+                            ))}
+
                             {/* Door sensor circle */}
-                            <Group>
+                            <Group onDblClick={() => navigate("/settings#powiadomienia")}>
                                 {doorOpen && <Circle x={dsc.x} y={dsc.y} radius={9} fill={dColor} opacity={0.2} />}
                                 <Circle x={dsc.x} y={dsc.y} radius={5}
                                     fill={C.sensorBg} stroke={dColor} strokeWidth={1.2}

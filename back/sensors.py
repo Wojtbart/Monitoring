@@ -10,10 +10,9 @@ LOG_COOLDOWN_SECONDS = 60  # ten sam alert max raz na minutę
 
 
 class Sensor:
-    def __init__(self, app, settings, phone_numbers, camera):
+    def __init__(self, app, settings, camera):
         self.app = app
         self.camera = camera
-        self.phone_numbers = phone_numbers
         self._apply_settings(settings)
 
         self.is_recording = False
@@ -62,13 +61,34 @@ class Sensor:
         key = f'{sensor_name}:{description[:40]}'
         now = time.time()
         if now - self._last_log.get(key, 0) < LOG_COOLDOWN_SECONDS:
-            return
+            return False
         self._last_log[key] = now
         try:
             with self.app.app_context():
                 Log.add_log(datetime.now(), sensor_name, is_warning, description)
         except Exception as e:
             print(f'[sensor] błąd zapisu logu: {e}')
+        return True
+
+    def _raise_alert(self, event_type, sensor_name, is_warning, desc):
+        print(f'[sensor] {desc}')
+        if not self._log(sensor_name, is_warning, desc):
+            return
+        self._notify(event_type, desc)
+
+    def _notify(self, event_type, desc):
+        from models import NotificationRule, EmailRecipient, SmsRecipient
+        from notifications import send_email, send_sms
+        with self.app.app_context():
+            rule = NotificationRule.query.filter_by(event_type=event_type).first()
+            if not rule:
+                return
+            if rule.email_enabled and rule.email_group_id:
+                emails = [r.email for r in EmailRecipient.query.filter_by(group_id=rule.email_group_id).all()]
+                send_email(emails, f'Alarm: {desc}', desc)
+            if rule.sms_enabled and rule.sms_group_id:
+                numbers = [r.phone_number for r in SmsRecipient.query.filter_by(group_id=rule.sms_group_id).all()]
+                send_sms(numbers, desc)
 
     def _read_sensors(self):
         """Odczyt z hardware. Zastąp mockowane wartości prawdziwymi na RPi."""
@@ -124,24 +144,13 @@ class Sensor:
 
     def _check_thresholds(self):
         if self.fire:
-            desc = 'Wykryto ogień!'
-            print(f'[sensor] {desc}')
-            self._log('Czujnik pożaru', True, desc)
-
+            self._raise_alert('fire', 'Czujnik pożaru', True, 'Wykryto ogień!')
         if self.gas:
-            desc = 'Wykryto gaz/dym!'
-            print(f'[sensor] {desc}')
-            self._log('Czujnik gazu', True, desc)
-
+            self._raise_alert('gas', 'Czujnik gazu', True, 'Wykryto gaz/dym!')
         if self.water:
-            desc = 'Wykryto wodę!'
-            print(f'[sensor] {desc}')
-            self._log('Czujnik wody', True, desc)
-
+            self._raise_alert('water', 'Czujnik wody', True, 'Wykryto wodę!')
         if self.door:
-            desc = 'Otwarto drzwi'
-            print(f'[sensor] {desc}')
-            self._log('Czujnik drzwi', False, desc)
+            self._raise_alert('door', 'Czujnik drzwi', False, 'Otwarto drzwi')
 
     def _check_test_times(self):
         current_time = time.strftime('%H:%M:%S', time.localtime())

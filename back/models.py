@@ -41,35 +41,6 @@ class Layout(db.Model):
     data = db.Column(db.JSON, nullable=False)  # JSONB w postgresie
 
 
-class PhoneNumber(db.Model):
-    __tablename__ = 'phone_numbers'
-    phone_number = db.Column(db.String(80), unique=True, nullable=False, primary_key=True)
-
-    @staticmethod
-    def add_phone_number(phone_number):
-        if db.session.get(PhoneNumber, phone_number):
-            return False
-        new_phone_number = PhoneNumber(phone_number=phone_number)
-        db.session.add(new_phone_number)
-        db.session.commit()
-        return True
-
-    @staticmethod
-    def get_all_phone_numbers():
-        phone_numbers = PhoneNumber.query.all()
-        phone_numbers = [phone_number.phone_number for phone_number in phone_numbers]
-        return phone_numbers
-
-    @staticmethod
-    def delete_phone_number(phone_number):
-        phone_number = db.session.get(PhoneNumber, phone_number)
-        if phone_number:
-            db.session.delete(phone_number)
-            db.session.commit()
-            return True
-        return False
-
-
 class Setting(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True)
@@ -226,3 +197,178 @@ class DeviceSensorHistory(db.Model):
     temperature = db.Column(db.Float, nullable=False)
     humidity = db.Column(db.Float, nullable=False)
     recorded_at = db.Column(db.DateTime, nullable=False)
+
+
+class EmailGroup(db.Model):
+    __tablename__ = 'email_groups'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), unique=True, nullable=False)
+
+    @staticmethod
+    def get_all_with_recipients():
+        groups = EmailGroup.query.all()
+        return [
+            {
+                'id': g.id,
+                'name': g.name,
+                'recipients': [
+                    {'id': r.id, 'email': r.email}
+                    for r in EmailRecipient.query.filter_by(group_id=g.id).all()
+                ],
+            }
+            for g in groups
+        ]
+
+    @staticmethod
+    def add_group(name):
+        if EmailGroup.query.filter_by(name=name).first():
+            return None
+        group = EmailGroup(name=name)
+        db.session.add(group)
+        db.session.commit()
+        return group
+
+    @staticmethod
+    def delete_group(group_id):
+        group = db.session.get(EmailGroup, group_id)
+        if not group:
+            return False
+        EmailRecipient.query.filter_by(group_id=group_id).delete()
+        db.session.delete(group)
+        db.session.commit()
+        return True
+
+    @staticmethod
+    def add_recipient(group_id, email):
+        if not db.session.get(EmailGroup, group_id):
+            return None
+        recipient = EmailRecipient(group_id=group_id, email=email)
+        db.session.add(recipient)
+        db.session.commit()
+        return recipient
+
+    @staticmethod
+    def delete_recipient(recipient_id):
+        recipient = db.session.get(EmailRecipient, recipient_id)
+        if not recipient:
+            return False
+        db.session.delete(recipient)
+        db.session.commit()
+        return True
+
+
+class EmailRecipient(db.Model):
+    __tablename__ = 'email_recipients'
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('email_groups.id'), nullable=False)
+    email = db.Column(db.String(255), nullable=False)
+
+
+class SmsGroup(db.Model):
+    __tablename__ = 'sms_groups'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), unique=True, nullable=False)
+
+    @staticmethod
+    def get_all_with_recipients():
+        groups = SmsGroup.query.all()
+        return [
+            {
+                'id': g.id,
+                'name': g.name,
+                'recipients': [
+                    {'id': r.id, 'phone_number': r.phone_number}
+                    for r in SmsRecipient.query.filter_by(group_id=g.id).all()
+                ],
+            }
+            for g in groups
+        ]
+
+    @staticmethod
+    def add_group(name):
+        if SmsGroup.query.filter_by(name=name).first():
+            return None
+        group = SmsGroup(name=name)
+        db.session.add(group)
+        db.session.commit()
+        return group
+
+    @staticmethod
+    def delete_group(group_id):
+        group = db.session.get(SmsGroup, group_id)
+        if not group:
+            return False
+        SmsRecipient.query.filter_by(group_id=group_id).delete()
+        db.session.delete(group)
+        db.session.commit()
+        return True
+
+    @staticmethod
+    def add_recipient(group_id, phone_number):
+        if not db.session.get(SmsGroup, group_id):
+            return None
+        recipient = SmsRecipient(group_id=group_id, phone_number=phone_number)
+        db.session.add(recipient)
+        db.session.commit()
+        return recipient
+
+    @staticmethod
+    def delete_recipient(recipient_id):
+        recipient = db.session.get(SmsRecipient, recipient_id)
+        if not recipient:
+            return False
+        db.session.delete(recipient)
+        db.session.commit()
+        return True
+
+
+class SmsRecipient(db.Model):
+    __tablename__ = 'sms_recipients'
+    id = db.Column(db.Integer, primary_key=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('sms_groups.id'), nullable=False)
+    phone_number = db.Column(db.String(20), nullable=False)
+
+
+NOTIFICATION_EVENT_TYPES = ('fire', 'gas', 'water', 'door')
+
+
+class NotificationRule(db.Model):
+    __tablename__ = 'notification_rules'
+    id = db.Column(db.Integer, primary_key=True)
+    event_type = db.Column(db.String(20), unique=True, nullable=False)
+    email_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    email_group_id = db.Column(db.Integer, db.ForeignKey('email_groups.id'), nullable=True)
+    sms_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    sms_group_id = db.Column(db.Integer, db.ForeignKey('sms_groups.id'), nullable=True)
+
+    @staticmethod
+    def seed_defaults():
+        for event_type in NOTIFICATION_EVENT_TYPES:
+            if not NotificationRule.query.filter_by(event_type=event_type).first():
+                db.session.add(NotificationRule(event_type=event_type))
+        db.session.commit()
+
+    @staticmethod
+    def get_all():
+        return [
+            {
+                'event_type': r.event_type,
+                'email_enabled': r.email_enabled,
+                'email_group_id': r.email_group_id,
+                'sms_enabled': r.sms_enabled,
+                'sms_group_id': r.sms_group_id,
+            }
+            for r in NotificationRule.query.all()
+        ]
+
+    @staticmethod
+    def update_all(rules):
+        for rule_data in rules:
+            rule = NotificationRule.query.filter_by(event_type=rule_data['event_type']).first()
+            if not rule:
+                continue
+            rule.email_enabled = rule_data['email_enabled']
+            rule.email_group_id = rule_data.get('email_group_id')
+            rule.sms_enabled = rule_data['sms_enabled']
+            rule.sms_group_id = rule_data.get('sms_group_id')
+        db.session.commit()

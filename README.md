@@ -46,7 +46,8 @@ Routing (`App.jsx`): `/loginPage`, `/registerUser`, `/testDevice`, `/camera`, `/
 - **Kamera** — podgląd na żywo (MJPEG stream), ręczne i automatyczne nagrywanie (przy wykryciu ruchu), lista zapisanych nagrań pogrupowana po dniach z możliwością usuwania.
 - **Logi systemowe** — historia zdarzeń i alarmów z filtrowaniem po sensorze i sortowaniem.
 - **Zarządzanie użytkownikami** — rejestracja (tylko admin), lista kont z uprawnieniami, usuwanie (z ochroną przed samousunięciem).
-- **Ustawienia** — czas nagrywania, godziny testów systemowych, numery telefonów do powiadomień, podgląd czujników globalnych pomieszczenia.
+- **Ustawienia** — czas nagrywania, godziny testów systemowych, podgląd czujników globalnych pomieszczenia.
+- **Powiadomienia** — grupy odbiorców mailowych i SMS, reguły wysyłki per zdarzenie (pożar/gaz/zalanie/drzwi). E-mail wysyłany realnie przez SMTP, SMS na razie zamockowany (log w konsoli, gotowy do podłączenia realnego dostawcy).
 
 ## Uruchomienie
 
@@ -81,11 +82,11 @@ Testy znajdują się w `back/tests/` (konfiguracja w `back/tests/pytest.ini`).
 
 ## Baza danych
 
-SQLite, plik lokalny w `back/instance/monitoring.db` (nieśledzony w gicie — zawiera lokalne dane, w tym hashe haseł). Tabele: `users`, `layouts`, `phone_numbers`, `settings`, `logs`, `device_sensors`, `device_sensor_history`.
+SQLite, plik lokalny w `back/instance/monitoring.db` (nieśledzony w gicie — zawiera lokalne dane, w tym hashe haseł). Tabele: `users`, `layouts`, `settings`, `logs`, `device_sensors`, `device_sensor_history`, `email_groups`, `email_recipients`, `sms_groups`, `sms_recipients`, `notification_rules`.
 
 ## Zmienne środowiskowe
 
-Zobacz `back/.env.example` i `front/.env.example`. Pliki `.env` (z prawdziwymi wartościami) nie są śledzone w gicie.
+Zobacz `back/.env.example` i `front/.env.example`. Pliki `.env` (z prawdziwymi wartościami) nie są śledzone w gicie. Wysyłka e-mail wymaga uzupełnienia `SMTP_HOST/PORT/USER/PASSWORD/FROM` w `back/.env` — bez tego moduł powiadomień działa (reguły/grupy), ale wysyłka jest pomijana z logiem `SMTP nieskonfigurowany`.
 
 ## Znane ograniczenia
 
@@ -94,3 +95,5 @@ Zobacz `back/.env.example` i `front/.env.example`. Pliki `.env` (z prawdziwymi w
 - `npm audit` we `front/` zgłasza 8 podatności (wszystkie high), w zależnościach pośrednich:
   - `brace-expansion` przez `eslint`/`minimatch` (tylko devDependency, nie trafia do builda produkcyjnego) — wymaga `npm audit fix --force` (breaking change: eslint 10).
   - `react-router` 7.12.0–8.2.0 (RSC Mode CSRF Bypass) — dotyczy trybu RSC/data-router (loadery, akcje, server components), którego ten projekt nie używa (tylko deklaratywny routing: `BrowserRouter`/`Routes`/`Route`). Najnowsza wydana wersja (7.18.2, aktualnie zainstalowana) wciąż mieści się w podatnym zakresie — patch jeszcze nie wyszedł; `npm audit fix --force` proponuje downgrade do 7.11.0, co przywróciłoby starszą, już załataną lukę (open redirect / SSR deserialize), więc świadomie tego nie robimy.
+- Wysyłka SMS w module powiadomień jest zamockowana (`back/notifications.py:send_sms` tylko loguje do konsoli) — brak konta u płatnego dostawcy SMS. Gotowe do podłączenia realnego API, analogicznie do GPIO w `sensors.py`.
+- Stara tabela `phone_numbers` (zastąpiona grupami SMS) może zostać osierocona w już istniejących bazach `instance/monitoring.db` — dane nie są usuwane automatycznie, tylko kod przestaje ich używać.

@@ -2,7 +2,7 @@ import os
 from flask import Flask, Response, request, jsonify, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
-from models import db, User, PhoneNumber, Setting, Log, Layout, DeviceSensor, DeviceSensorHistory
+from models import db, User, Setting, Log, Layout, DeviceSensor, DeviceSensorHistory, EmailGroup, EmailRecipient, SmsGroup, SmsRecipient, NotificationRule, NOTIFICATION_EVENT_TYPES
 from pythonping import ping
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -34,8 +34,7 @@ def init_sensor():
     global sensor
     with app.app_context():
         settings = Setting.get_all_settings()
-        phone_numbers = PhoneNumber.get_all_phone_numbers()
-    sensor = Sensor(app, settings, phone_numbers, camera)
+    sensor = Sensor(app, settings, camera)
 
 
 @app.route('/')
@@ -208,23 +207,124 @@ def delete_all_videos():
     return jsonify({'message': 'Wszystkie wideo usunięte'}), 200
 
 
-@app.route('/phone-numbers', methods=['POST'])
+@app.route('/email-groups', methods=['POST'])
 @jwt_required()
-def add_phone_number():
+def add_email_group():
+    data = request.get_json()
+    name = data.get('name')
+    if not name:
+        return jsonify({'message': 'Nazwa grupy wymagana'}), 400
+    group = EmailGroup.add_group(name)
+    if not group:
+        return jsonify({'message': 'Grupa o takiej nazwie już istnieje'}), 400
+    return jsonify({'message': 'Grupa dodana', 'id': group.id}), 201
+
+
+@app.route('/email-groups', methods=['GET'])
+def get_email_groups():
+    return jsonify({'groups': EmailGroup.get_all_with_recipients()}), 200
+
+
+@app.route('/email-groups/<int:group_id>', methods=['DELETE'])
+@jwt_required()
+def delete_email_group(group_id):
+    if not EmailGroup.delete_group(group_id):
+        return jsonify({'message': 'Grupa nie znaleziona'}), 404
+    return jsonify({'message': 'Grupa usunięta'}), 200
+
+
+@app.route('/email-groups/<int:group_id>/recipients', methods=['POST'])
+@jwt_required()
+def add_email_recipient(group_id):
+    data = request.get_json()
+    email = data.get('email')
+    if not email:
+        return jsonify({'message': 'Adres e-mail wymagany'}), 400
+    recipient = EmailGroup.add_recipient(group_id, email)
+    if not recipient:
+        return jsonify({'message': 'Grupa nie znaleziona'}), 404
+    return jsonify({'message': 'Adres dodany', 'id': recipient.id}), 201
+
+
+@app.route('/email-groups/<int:group_id>/recipients/<int:recipient_id>', methods=['DELETE'])
+@jwt_required()
+def delete_email_recipient(group_id, recipient_id):
+    if not EmailGroup.delete_recipient(recipient_id):
+        return jsonify({'message': 'Adres nie znaleziony'}), 404
+    return jsonify({'message': 'Adres usunięty'}), 200
+
+
+@app.route('/sms-groups', methods=['POST'])
+@jwt_required()
+def add_sms_group():
+    data = request.get_json()
+    name = data.get('name')
+    if not name:
+        return jsonify({'message': 'Nazwa grupy wymagana'}), 400
+    group = SmsGroup.add_group(name)
+    if not group:
+        return jsonify({'message': 'Grupa o takiej nazwie już istnieje'}), 400
+    return jsonify({'message': 'Grupa dodana', 'id': group.id}), 201
+
+
+@app.route('/sms-groups', methods=['GET'])
+def get_sms_groups():
+    return jsonify({'groups': SmsGroup.get_all_with_recipients()}), 200
+
+
+@app.route('/sms-groups/<int:group_id>', methods=['DELETE'])
+@jwt_required()
+def delete_sms_group(group_id):
+    if not SmsGroup.delete_group(group_id):
+        return jsonify({'message': 'Grupa nie znaleziona'}), 404
+    return jsonify({'message': 'Grupa usunięta'}), 200
+
+
+@app.route('/sms-groups/<int:group_id>/recipients', methods=['POST'])
+@jwt_required()
+def add_sms_recipient(group_id):
     data = request.get_json()
     phone_number = data.get('phone_number')
     if not phone_number:
         return jsonify({'message': 'Numer telefonu wymagany'}), 400
-    if not PhoneNumber.add_phone_number(phone_number):
-        return jsonify({'message': 'Ten numer telefonu już istnieje'}), 400
-    return jsonify({'message': 'Numer telefonu dodany'}), 200
+    recipient = SmsGroup.add_recipient(group_id, phone_number)
+    if not recipient:
+        return jsonify({'message': 'Grupa nie znaleziona'}), 404
+    return jsonify({'message': 'Numer dodany', 'id': recipient.id}), 201
 
 
-@app.route('/phone-numbers/<phone_number>', methods=['DELETE'])
+@app.route('/sms-groups/<int:group_id>/recipients/<int:recipient_id>', methods=['DELETE'])
 @jwt_required()
-def delete_phone_number(phone_number):
-    PhoneNumber.delete_phone_number(phone_number)
-    return jsonify({'message': 'Numer telefonu usunięty'}), 200
+def delete_sms_recipient(group_id, recipient_id):
+    if not SmsGroup.delete_recipient(recipient_id):
+        return jsonify({'message': 'Numer nie znaleziony'}), 404
+    return jsonify({'message': 'Numer usunięty'}), 200
+
+
+@app.route('/notification-rules', methods=['GET'])
+def get_notification_rules():
+    return jsonify({'rules': NotificationRule.get_all()}), 200
+
+
+@app.route('/notification-rules', methods=['PUT'])
+@jwt_required()
+def update_notification_rules():
+    data = request.get_json()
+    rules = data.get('rules')
+    if not rules or len(rules) != len(NOTIFICATION_EVENT_TYPES):
+        return jsonify({'message': 'Wymagane dokładnie 4 reguły'}), 400
+    seen_types = set()
+    for rule in rules:
+        event_type = rule.get('event_type')
+        if event_type not in NOTIFICATION_EVENT_TYPES or event_type in seen_types:
+            return jsonify({'message': 'Nieprawidłowy typ zdarzenia'}), 400
+        seen_types.add(event_type)
+        if rule.get('email_group_id') is not None and not db.session.get(EmailGroup, rule['email_group_id']):
+            return jsonify({'message': 'Grupa mailowa nie istnieje'}), 400
+        if rule.get('sms_group_id') is not None and not db.session.get(SmsGroup, rule['sms_group_id']):
+            return jsonify({'message': 'Grupa SMS nie istnieje'}), 400
+    NotificationRule.update_all(rules)
+    return jsonify({'message': 'Reguły zaktualizowane'}), 200
 
 
 @app.route('/settings', methods=['PUT'])
@@ -246,15 +346,8 @@ def save_settings():
 @app.route('/settings-and-phone-numbers', methods=['GET'])
 def get_settings():
     return jsonify({
-        'phone_numbers': PhoneNumber.get_all_phone_numbers(),
         'settings': Setting.get_all_settings(),
     }), 200
-
-
-@app.route('/phone-numbers', methods=['GET'])
-@jwt_required()
-def get_phone_numbers():
-    return jsonify({'phone_numbers': PhoneNumber.get_all_phone_numbers()}), 200
 
 
 @app.route('/settings', methods=['GET'])
