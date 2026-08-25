@@ -28,6 +28,7 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import HomeIcon from "@mui/icons-material/Home";
+import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import "./Layout.css";
 
 const Layout = ({ children }) => {
@@ -36,10 +37,43 @@ const Layout = ({ children }) => {
     const [openMenu, setOpenMenu] = React.useState(false);
     const [username, setUsername] = useState("");
     const [isAdmin, setIsAdmin] = useState(false);
+    const [now, setNow] = useState(new Date());
+    const [uptimeSeconds, setUptimeSeconds] = useState(null);
+    const [voltage, setVoltage] = useState(null);
     const navigate = useNavigate();
     const theme = useTheme();
 
-    const handleLogout = () => {
+    useEffect(() => {
+        const iv = setInterval(() => setNow(new Date()), 1000);
+        return () => clearInterval(iv);
+    }, []);
+
+    useEffect(() => {
+        const fetchStatus = async () => {
+            try {
+                const { data } = await axios.get(`${API_BASE}/real-time-data`);
+                setUptimeSeconds(data.uptime_seconds);
+                setVoltage(data.voltage);
+            } catch (_) {}
+        };
+        fetchStatus();
+        const iv = setInterval(fetchStatus, 5000);
+        return () => clearInterval(iv);
+    }, []);
+
+    const formatUptime = (seconds) => {
+        if (seconds == null) return "—";
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        return `${hours} godz ${minutes} min`;
+    };
+
+    const handleLogout = async () => {
+        try {
+            await axios.post(`${API_BASE}/logout`, {}, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+        } catch (_) {}
         localStorage.removeItem("JWT");
         navigate("/loginPage");
     };
@@ -101,6 +135,10 @@ const Layout = ({ children }) => {
         navigate("/logs");
     };
 
+    const handleHelp = () => {
+        navigate("/pomoc");
+    };
+
     const handleRegister = () => {
         if (isAdmin) {
             navigate("/registerUser");
@@ -154,6 +192,21 @@ const Layout = ({ children }) => {
                         </Toolbar>
                     </AppBar>
 
+                    <Box sx={{
+                        display: "flex", justifyContent: "flex-end", gap: 1.5,
+                        px: 1.5, py: 0.125, bgcolor: "#f0f2f8", borderBottom: "1px solid #d5dae5",
+                    }}>
+                        <Typography sx={{ fontSize: "0.68rem" }} color="text.secondary">
+                            Uptime: <strong>{formatUptime(uptimeSeconds)}</strong>
+                        </Typography>
+                        <Typography sx={{ fontSize: "0.68rem" }} color="text.secondary">
+                            Napięcie: <strong>{voltage != null ? `${voltage}V` : "—"}</strong>
+                        </Typography>
+                        <Typography sx={{ fontSize: "0.68rem" }} color="text.secondary">
+                            Czas: <strong>{now.toLocaleString("pl-PL")}</strong>
+                        </Typography>
+                    </Box>
+
                     <Container component="main" className="container">
                         <Drawer
                             sx={{
@@ -204,6 +257,10 @@ const Layout = ({ children }) => {
                                 <ListItemButton onClick={handleLogs}>
                                     <ListItemIcon><NewspaperIcon /></ListItemIcon>
                                     <ListItemText primary="Logi z systemu" />
+                                </ListItemButton>
+                                <ListItemButton onClick={handleHelp}>
+                                    <ListItemIcon><HelpOutlineIcon /></ListItemIcon>
+                                    <ListItemText primary="Pomoc" />
                                 </ListItemButton>
                             </List>
                             <Divider />

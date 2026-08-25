@@ -110,6 +110,11 @@ class Log(db.Model):
             db.session.delete(log)
         db.session.commit()
 
+    @staticmethod
+    def remove_logs(ids):
+        Log.query.filter(Log.id.in_(ids)).delete(synchronize_session=False)
+        db.session.commit()
+
 
 class DeviceSensor(db.Model):
     __tablename__ = 'device_sensors'
@@ -329,7 +334,7 @@ class SmsRecipient(db.Model):
     phone_number = db.Column(db.String(20), nullable=False)
 
 
-NOTIFICATION_EVENT_TYPES = ('fire', 'gas', 'water', 'door')
+NOTIFICATION_EVENT_TYPES = ('fire', 'gas', 'water', 'door', 'device_threshold')
 
 
 class NotificationRule(db.Model):
@@ -372,3 +377,97 @@ class NotificationRule(db.Model):
             rule.sms_enabled = rule_data['sms_enabled']
             rule.sms_group_id = rule_data.get('sms_group_id')
         db.session.commit()
+
+
+ALARM_EVENT_TYPES = ('fire', 'gas', 'water', 'door')
+
+
+class AlarmState(db.Model):
+    __tablename__ = 'alarm_states'
+    id = db.Column(db.Integer, primary_key=True)
+    event_type = db.Column(db.String(20), unique=True, nullable=False)
+    active = db.Column(db.Boolean, nullable=False, default=False)
+    last_triggered_at = db.Column(db.DateTime, nullable=True)
+    cleared_at = db.Column(db.DateTime, nullable=True)
+
+    @staticmethod
+    def seed_defaults():
+        for event_type in ALARM_EVENT_TYPES:
+            if not AlarmState.query.filter_by(event_type=event_type).first():
+                db.session.add(AlarmState(event_type=event_type))
+        db.session.commit()
+
+    @staticmethod
+    def get_all():
+        return [
+            {
+                'event_type': s.event_type,
+                'active': s.active,
+                'last_triggered_at': s.last_triggered_at.strftime('%Y-%m-%d %H:%M:%S') if s.last_triggered_at else None,
+                'cleared_at': s.cleared_at.strftime('%Y-%m-%d %H:%M:%S') if s.cleared_at else None,
+            }
+            for s in AlarmState.query.all()
+        ]
+
+    @staticmethod
+    def trigger(event_type):
+        from datetime import datetime
+        state = AlarmState.query.filter_by(event_type=event_type).first()
+        if not state:
+            return
+        state.active = True
+        state.last_triggered_at = datetime.now()
+        db.session.commit()
+
+    @staticmethod
+    def clear(event_type):
+        from datetime import datetime
+        state = AlarmState.query.filter_by(event_type=event_type).first()
+        if not state:
+            return False
+        state.active = False
+        state.cleared_at = datetime.now()
+        db.session.commit()
+        return True
+
+
+class DeviceAlarmState(db.Model):
+    __tablename__ = 'device_alarm_states'
+    id = db.Column(db.Integer, primary_key=True)
+    rack_id = db.Column(db.String(20), nullable=False)
+    unit = db.Column(db.Integer, nullable=False)
+    metric = db.Column(db.String(20), nullable=False)
+    active = db.Column(db.Boolean, nullable=False, default=False)
+    last_triggered_at = db.Column(db.DateTime, nullable=True)
+    cleared_at = db.Column(db.DateTime, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('rack_id', 'unit', 'metric', name='uq_device_alarm_rack_unit_metric'),
+    )
+
+    @staticmethod
+    def is_active(rack_id, unit, metric):
+        state = DeviceAlarmState.query.filter_by(rack_id=rack_id, unit=unit, metric=metric).first()
+        return bool(state and state.active)
+
+    @staticmethod
+    def trigger(rack_id, unit, metric):
+        from datetime import datetime
+        state = DeviceAlarmState.query.filter_by(rack_id=rack_id, unit=unit, metric=metric).first()
+        if not state:
+            state = DeviceAlarmState(rack_id=rack_id, unit=unit, metric=metric)
+            db.session.add(state)
+        state.active = True
+        state.last_triggered_at = datetime.now()
+        db.session.commit()
+
+    @staticmethod
+    def clear(rack_id, unit, metric):
+        state = DeviceAlarmState.query.filter_by(rack_id=rack_id, unit=unit, metric=metric).first()
+        if not state:
+            return False
+        from datetime import datetime
+        state.active = False
+        state.cleared_at = datetime.now()
+        db.session.commit()
+        return True

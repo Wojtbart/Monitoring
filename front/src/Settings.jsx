@@ -103,7 +103,7 @@ const Settings = () => {
     const [rules, setRules] = useState([]);
     const [rulesStatus, setRulesStatus] = useState(null);
 
-    const EVENT_TYPE_LABELS = { fire: "Pożar", gas: "Gaz/Dym", water: "Zalanie", door: "Drzwi otwarte" };
+    const EVENT_TYPE_LABELS = { fire: "Pożar", gas: "Gaz/Dym", water: "Zalanie", door: "Drzwi otwarte", device_threshold: "Próg temp./wilgotności szafy" };
 
     useEffect(() => {
         const fetchEnv = async () => {

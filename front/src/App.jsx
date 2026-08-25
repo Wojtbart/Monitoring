@@ -11,6 +11,8 @@ import Settings from "./Settings";
 import Logs from "./Logs";
 import ServerRack from "./ServerRack";
 import SensorDetail from "./SensorDetail";
+import RoomSensorDetail from "./RoomSensorDetail";
+import Help from "./Help";
 import FloorPlan from "./FloorPlan";
 
 function App() {
@@ -26,6 +28,8 @@ function App() {
                 <Route path="/logs" element={<Logs />} />
                 <Route path="/rack/:rackId" element={<ServerRack />} />
                 <Route path="/rack/:rackId/unit/:unit/sensor/:type" element={<SensorDetail />} />
+                <Route path="/room-sensor/:type" element={<RoomSensorDetail />} />
+                <Route path="/pomoc" element={<Help />} />
                 <Route path="/rzut" element={<FloorPlan />} />
                 <Route path="/" element={<FloorPlan />} />
             </Routes>

@@ -19,6 +19,7 @@ class Sensor:
         self.is_user_recording = False
         self.temperature = 0.0
         self.humidity = 0.0
+        self.voltage = 0.0
         self.motion = False
         self.fire = False
         self.gas = False
@@ -26,6 +27,7 @@ class Sensor:
         self.water = False
         self.video_name = ''
         self.timer = None
+        self.start_time = time.time()
         self._last_log: dict[str, float] = {}
 
         # GPIO.setmode(GPIO.BCM)
@@ -49,18 +51,20 @@ class Sensor:
         return {
             'temperature': self.temperature,
             'humidity': self.humidity,
+            'voltage': self.voltage,
             'motion': self.motion,
             'fire': self.fire,
             'gas': self.gas,
             'door': self.door,
             'water': self.water,
+            'uptime_seconds': int(time.time() - self.start_time),
         }
 
-    def _log(self, sensor_name, is_warning, description):
+    def _log(self, sensor_name, is_warning, description, force=False):
         from models import Log
         key = f'{sensor_name}:{description[:40]}'
         now = time.time()
-        if now - self._last_log.get(key, 0) < LOG_COOLDOWN_SECONDS:
+        if not force and now - self._last_log.get(key, 0) < LOG_COOLDOWN_SECONDS:
             return False
         self._last_log[key] = now
         try:
@@ -70,10 +74,13 @@ class Sensor:
             print(f'[sensor] błąd zapisu logu: {e}')
         return True
 
-    def _raise_alert(self, event_type, sensor_name, is_warning, desc):
+    def _raise_alert(self, event_type, sensor_name, is_warning, desc, force=False):
         print(f'[sensor] {desc}')
-        if not self._log(sensor_name, is_warning, desc):
+        if not self._log(sensor_name, is_warning, desc, force=force):
             return
+        from models import AlarmState
+        with self.app.app_context():
+            AlarmState.trigger(event_type)
         self._notify(event_type, desc)
 
     def _notify(self, event_type, desc):
@@ -95,6 +102,7 @@ class Sensor:
         # --- Mock (dev) ---
         self.temperature = random.randint(20, 32)   # w normie, sporadycznie poza
         self.humidity = random.randint(35, 75)       # w normie
+        self.voltage = round(random.uniform(11.5, 14.5), 1)  # napięcie zasilania, w normie
         self.motion = False                          # brak podłączonego czujnika PIR — mock wyłączony
         self.fire  = random.random() < 0.01          # 1% szansa
         self.gas   = random.random() < 0.01          # 1% szansa

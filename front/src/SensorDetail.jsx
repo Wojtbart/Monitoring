@@ -25,6 +25,7 @@ export default function SensorDetail() {
     const [minInput, setMinInput] = useState("");
     const [maxInput, setMaxInput] = useState("");
     const [saveStatus, setSaveStatus] = useState(null);
+    const [alarmStatus, setAlarmStatus] = useState(null);
 
     useEffect(() => {
         if (current) {
@@ -99,6 +100,38 @@ export default function SensorDetail() {
 
     const chartData = history.map(row => ({ time: row.recorded_at.slice(11, 19), value: row[type] }));
 
+    const alarmActive = current
+        ? (type === "temperature" ? current.alarm_active_temperature : current.alarm_active_humidity)
+        : false;
+
+    const handleSimulate = async () => {
+        try {
+            await axios.post(`${API_BASE}/device-sensors/${rackId}/${unit}/${type}/simulate`, {}, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            setAlarmStatus({ type: "success", message: "Alarm testowy wywołany — sprawdź powiadomienia." });
+        } catch (error) {
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd wywołania testu." });
+        }
+        setTimeout(() => setAlarmStatus(null), 3000);
+    };
+
+    const handleClearAlarm = async () => {
+        try {
+            await axios.delete(`${API_BASE}/device-sensors/${rackId}/${unit}/${type}/clear`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            setCurrent(prev => prev && {
+                ...prev,
+                [type === "temperature" ? "alarm_active_temperature" : "alarm_active_humidity"]: false,
+            });
+            setAlarmStatus({ type: "success", message: "Alarm skasowany." });
+        } catch (error) {
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd kasowania alarmu." });
+        }
+        setTimeout(() => setAlarmStatus(null), 2500);
+    };
+
     return (
         <Layout>
             <Box sx={{ p: 2, maxWidth: 700, mx: "auto" }}>
@@ -132,6 +165,31 @@ export default function SensorDetail() {
                         />
                     )}
                 </Box>
+
+                <Box sx={{
+                    p: 2, mb: 2, borderRadius: 1.5,
+                    bgcolor: alarmActive ? "#fdecea" : "#eaf6ec",
+                    border: alarmActive ? "1px solid #e53935" : "1px solid #2e7d32",
+                }}>
+                    <Typography variant="h6" fontWeight="bold" sx={{ color: alarmActive ? "#c62828" : "#2e7d32" }}>
+                        {alarmActive ? "ALARM — przekroczono próg, wymaga skasowania" : "Brak alarmu"}
+                    </Typography>
+                </Box>
+
+                <Box sx={{ display: "flex", gap: 1.5, mb: 2, flexWrap: "wrap" }}>
+                    <Button variant="outlined" onClick={handleSimulate}>
+                        Symuluj alarm (test)
+                    </Button>
+                    <Button variant="contained" color="error" onClick={handleClearAlarm} disabled={!alarmActive}>
+                        Skasuj alarm
+                    </Button>
+                </Box>
+
+                {alarmStatus && (
+                    <Alert severity={alarmStatus.type} sx={{ mb: 2 }} onClose={() => setAlarmStatus(null)}>
+                        {alarmStatus.message}
+                    </Alert>
+                )}
 
                 <Box sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
                     <Typography variant="subtitle2" sx={{ color: "#333", fontWeight: "bold", mb: 1 }}>

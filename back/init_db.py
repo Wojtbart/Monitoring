@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app import app
-from models import db, Setting, User, NotificationRule
+from models import db, Setting, User, NotificationRule, AlarmState
 from werkzeug.security import generate_password_hash
 
 with app.app_context():
@@ -43,5 +43,9 @@ with app.app_context():
     # Seed domyślnych reguł powiadomień (idempotentne)
     NotificationRule.seed_defaults()
     print('[init_db] Reguły powiadomień zseedowane.')
+
+    # Seed domyślnych stanów alarmów (idempotentne)
+    AlarmState.seed_defaults()
+    print('[init_db] Stany alarmów zseedowane.')
 
 print('[init_db] Gotowe.')

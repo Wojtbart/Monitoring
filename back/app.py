@@ -2,7 +2,7 @@ import os
 from flask import Flask, Response, request, jsonify, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
-from models import db, User, Setting, Log, Layout, DeviceSensor, DeviceSensorHistory, EmailGroup, EmailRecipient, SmsGroup, SmsRecipient, NotificationRule, NOTIFICATION_EVENT_TYPES
+from models import db, User, Setting, Log, Layout, DeviceSensor, DeviceSensorHistory, EmailGroup, EmailRecipient, SmsGroup, SmsRecipient, NotificationRule, NOTIFICATION_EVENT_TYPES, AlarmState, ALARM_EVENT_TYPES, DeviceAlarmState
 from pythonping import ping
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -34,6 +34,7 @@ def init_sensor():
     global sensor
     with app.app_context():
         settings = Setting.get_all_settings()
+        Log.add_log(datetime.now(), 'System', False, 'System uruchomiony')
     sensor = Sensor(app, settings, camera)
 
 
@@ -95,9 +96,21 @@ def login():
     password = data.get('password')
     user = User.get_user_by_username(username)
     if user is None or not check_password_hash(user.password, password):
+        Log.add_log(datetime.now(), 'Logowanie', True,
+                    f'Nieudana próba logowania: {username} (IP: {request.remote_addr})')
         return jsonify({'message': 'Nieprawidłowe dane logowania'}), 401
     access_token = create_access_token(identity=username)
+    Log.add_log(datetime.now(), 'Logowanie', False,
+                f'Zalogowano jako {username} (IP: {request.remote_addr})')
     return jsonify({'accessToken': access_token}), 200
+
+
+@app.route('/logout', methods=['POST'])
+@jwt_required()
+def logout():
+    current_user = get_jwt_identity()
+    Log.add_log(datetime.now(), 'Wylogowanie', False, f'Wylogowano: {current_user}')
+    return jsonify({'message': 'Wylogowano'}), 200
 
 
 @app.route('/users/me', methods=['GET'])
@@ -327,6 +340,46 @@ def update_notification_rules():
     return jsonify({'message': 'Reguły zaktualizowane'}), 200
 
 
+EVENT_TYPE_SENSOR_NAMES = {
+    'fire': 'Czujnik pożaru', 'gas': 'Czujnik gazu',
+    'water': 'Czujnik wody', 'door': 'Czujnik drzwi',
+}
+EVENT_TYPE_TEST_DESCRIPTIONS = {
+    'fire': 'Wykryto ogień! (TEST)', 'gas': 'Wykryto gaz/dym! (TEST)',
+    'water': 'Wykryto wodę! (TEST)', 'door': 'Otwarto drzwi (TEST)',
+}
+
+
+@app.route('/alarm-states', methods=['GET'])
+def get_alarm_states():
+    return jsonify({'states': AlarmState.get_all()}), 200
+
+
+@app.route('/sensors/<event_type>/simulate', methods=['POST'])
+@jwt_required()
+def simulate_sensor_alert(event_type):
+    if event_type not in ALARM_EVENT_TYPES:
+        return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
+    sensor._raise_alert(
+        event_type, EVENT_TYPE_SENSOR_NAMES[event_type], True,
+        EVENT_TYPE_TEST_DESCRIPTIONS[event_type], force=True,
+    )
+    return jsonify({'message': 'Alarm testowy wywołany'}), 200
+
+
+@app.route('/sensors/<event_type>/clear', methods=['DELETE'])
+@jwt_required()
+def clear_sensor_alert(event_type):
+    if event_type not in ALARM_EVENT_TYPES:
+        return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
+    if not AlarmState.clear(event_type):
+        return jsonify({'message': 'Stan alarmu nie znaleziony'}), 404
+    current_user = get_jwt_identity()
+    Log.add_log(datetime.now(), EVENT_TYPE_SENSOR_NAMES[event_type], False,
+                f'Alarm skasowany przez {current_user}')
+    return jsonify({'message': 'Alarm skasowany'}), 200
+
+
 @app.route('/settings', methods=['PUT'])
 @jwt_required()
 def save_settings():
@@ -364,7 +417,12 @@ def get_logs():
 @app.route('/logs', methods=['DELETE'])
 @jwt_required()
 def delete_logs():
-    Log.remove_all_logs()
+    data = request.get_json(silent=True) or {}
+    ids = data.get('ids')
+    if ids:
+        Log.remove_logs(ids)
+    else:
+        Log.remove_all_logs()
     return jsonify({'message': 'Logi usunięte'}), 200
 
 
@@ -373,10 +431,12 @@ def get_real_time_data():
     return jsonify(sensor.get_current_data()), 200
 
 
-@app.route('/device-sensors/<rack_id>/<int:unit>', methods=['GET'])
-def get_device_sensors(rack_id, unit):
-    device = DeviceSensor.get_or_create_reading(rack_id, unit)
-    return jsonify({
+DEVICE_METRIC_LABELS = {'temperature': 'temperatury', 'humidity': 'wilgotności'}
+DEVICE_METRIC_UNITS = {'temperature': '°C', 'humidity': '%'}
+
+
+def _device_sensor_dict(rack_id, unit, device):
+    return {
         'temperature': device.temperature,
         'humidity': device.humidity,
         'updated_at': device.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
@@ -384,7 +444,72 @@ def get_device_sensors(rack_id, unit):
         'max_temperature': device.max_temperature,
         'min_humidity': device.min_humidity,
         'max_humidity': device.max_humidity,
-    }), 200
+        'alarm_active_temperature': DeviceAlarmState.is_active(rack_id, unit, 'temperature'),
+        'alarm_active_humidity': DeviceAlarmState.is_active(rack_id, unit, 'humidity'),
+    }
+
+
+def _raise_device_alert(rack_id, unit, metric, value, min_v, max_v):
+    label = DEVICE_METRIC_LABELS[metric]
+    unit_symbol = DEVICE_METRIC_UNITS[metric]
+    desc = (f'Przekroczono próg {label} w szafie {rack_id} (unit {unit}): '
+            f'{value}{unit_symbol} (próg {min_v}-{max_v}{unit_symbol})')
+    Log.add_log(datetime.now(), f'Szafa {rack_id} — Unit {unit}', True, desc)
+    DeviceAlarmState.trigger(rack_id, unit, metric)
+
+    rule = NotificationRule.query.filter_by(event_type='device_threshold').first()
+    if not rule:
+        return
+    from notifications import send_email, send_sms
+    if rule.email_enabled and rule.email_group_id:
+        emails = [r.email for r in EmailRecipient.query.filter_by(group_id=rule.email_group_id).all()]
+        send_email(emails, f'Alarm: {desc}', desc)
+    if rule.sms_enabled and rule.sms_group_id:
+        numbers = [r.phone_number for r in SmsRecipient.query.filter_by(group_id=rule.sms_group_id).all()]
+        send_sms(numbers, desc)
+
+
+def _check_device_thresholds(rack_id, unit, device):
+    checks = (
+        ('temperature', device.temperature, device.min_temperature, device.max_temperature),
+        ('humidity', device.humidity, device.min_humidity, device.max_humidity),
+    )
+    for metric, value, min_v, max_v in checks:
+        if (value < min_v or value > max_v) and not DeviceAlarmState.is_active(rack_id, unit, metric):
+            _raise_device_alert(rack_id, unit, metric, value, min_v, max_v)
+
+
+@app.route('/device-sensors/<rack_id>/<int:unit>', methods=['GET'])
+def get_device_sensors(rack_id, unit):
+    device = DeviceSensor.get_or_create_reading(rack_id, unit)
+    _check_device_thresholds(rack_id, unit, device)
+    return jsonify(_device_sensor_dict(rack_id, unit, device)), 200
+
+
+@app.route('/device-sensors/<rack_id>/<int:unit>/<metric>/simulate', methods=['POST'])
+@jwt_required()
+def simulate_device_alert(rack_id, unit, metric):
+    if metric not in DEVICE_METRIC_LABELS:
+        return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
+    device = DeviceSensor.get_or_create_reading(rack_id, unit)
+    value = device.temperature if metric == 'temperature' else device.humidity
+    min_v = device.min_temperature if metric == 'temperature' else device.min_humidity
+    max_v = device.max_temperature if metric == 'temperature' else device.max_humidity
+    _raise_device_alert(rack_id, unit, metric, value, min_v, max_v)
+    return jsonify({'message': 'Alarm zasymulowany'}), 200
+
+
+@app.route('/device-sensors/<rack_id>/<int:unit>/<metric>/clear', methods=['DELETE'])
+@jwt_required()
+def clear_device_alert(rack_id, unit, metric):
+    if metric not in DEVICE_METRIC_LABELS:
+        return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
+    if not DeviceAlarmState.clear(rack_id, unit, metric):
+        return jsonify({'message': 'Stan alarmu nie znaleziony'}), 404
+    current_user = get_jwt_identity()
+    Log.add_log(datetime.now(), f'Szafa {rack_id} — Unit {unit}', False,
+                f'Alarm ({DEVICE_METRIC_LABELS[metric]}) skasowany przez {current_user}')
+    return jsonify({'message': 'Alarm skasowany'}), 200
 
 
 @app.route('/device-sensors/<rack_id>/<int:unit>/thresholds', methods=['PUT'])
@@ -403,15 +528,7 @@ def update_device_sensor_thresholds(rack_id, unit):
     device = DeviceSensor.update_thresholds(rack_id, unit, min_temperature, max_temperature, min_humidity, max_humidity)
     if device is None:
         return jsonify({'message': 'Urządzenie nie znalezione'}), 404
-    return jsonify({
-        'temperature': device.temperature,
-        'humidity': device.humidity,
-        'updated_at': device.updated_at.strftime('%Y-%m-%d %H:%M:%S'),
-        'min_temperature': device.min_temperature,
-        'max_temperature': device.max_temperature,
-        'min_humidity': device.min_humidity,
-        'max_humidity': device.max_humidity,
-    }), 200
+    return jsonify(_device_sensor_dict(rack_id, unit, device)), 200
 
 
 @app.route('/device-sensors/<rack_id>/<int:unit>/history', methods=['GET'])
