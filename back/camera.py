@@ -42,6 +42,18 @@ class Camera:
             self._writer = None
         self.is_recording = False
 
+    def capture_jpeg(self):
+        self._open()
+        if not self._cap or not self._cap.isOpened():
+            return None
+        ok, frame = self._cap.read()
+        if not ok:
+            return None
+        ret, buf = cv2.imencode('.jpg', frame)
+        if not ret:
+            return None
+        return buf.tobytes()
+
     def stream(self):
         self._open()
         if not self._cap or not self._cap.isOpened():

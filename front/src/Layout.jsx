@@ -29,6 +29,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import HomeIcon from "@mui/icons-material/Home";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import BoltIcon from "@mui/icons-material/Bolt";
 import "./Layout.css";
 
 const Layout = ({ children }) => {
@@ -39,7 +40,6 @@ const Layout = ({ children }) => {
     const [isAdmin, setIsAdmin] = useState(false);
     const [now, setNow] = useState(new Date());
     const [uptimeSeconds, setUptimeSeconds] = useState(null);
-    const [voltage, setVoltage] = useState(null);
     const navigate = useNavigate();
     const theme = useTheme();
 
@@ -53,7 +53,6 @@ const Layout = ({ children }) => {
             try {
                 const { data } = await axios.get(`${API_BASE}/real-time-data`);
                 setUptimeSeconds(data.uptime_seconds);
-                setVoltage(data.voltage);
             } catch (_) {}
         };
         fetchStatus();
@@ -139,6 +138,10 @@ const Layout = ({ children }) => {
         navigate("/pomoc");
     };
 
+    const handleVoltage = () => {
+        navigate("/napiecie");
+    };
+
     const handleRegister = () => {
         if (isAdmin) {
             navigate("/registerUser");
@@ -170,10 +173,20 @@ const Layout = ({ children }) => {
                             <Typography
                                 variant="h6"
                                 component="div"
-                                sx={{ flexGrow: 1, textAlign: "left" }}
+                                sx={{ textAlign: "left" }}
                             >
                                 <Link to="/">MONITORING SYSTEM</Link>
                             </Typography>
+                            <Box sx={{
+                                flexGrow: 1, display: "flex", justifyContent: "center", gap: 2.5,
+                            }}>
+                                <Typography sx={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.85)" }}>
+                                    Uptime: <strong>{formatUptime(uptimeSeconds)}</strong>
+                                </Typography>
+                                <Typography sx={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.85)" }}>
+                                    Czas: <strong>{now.toLocaleString("pl-PL")}</strong>
+                                </Typography>
+                            </Box>
                             <div className="loggedAs">
                                 <Typography variant="body1">
                                     Zalogowany jako:{" "}
@@ -191,21 +204,6 @@ const Layout = ({ children }) => {
                             </Button>
                         </Toolbar>
                     </AppBar>
-
-                    <Box sx={{
-                        display: "flex", justifyContent: "flex-end", gap: 1.5,
-                        px: 1.5, py: 0.125, bgcolor: "#f0f2f8", borderBottom: "1px solid #d5dae5",
-                    }}>
-                        <Typography sx={{ fontSize: "0.68rem" }} color="text.secondary">
-                            Uptime: <strong>{formatUptime(uptimeSeconds)}</strong>
-                        </Typography>
-                        <Typography sx={{ fontSize: "0.68rem" }} color="text.secondary">
-                            Napięcie: <strong>{voltage != null ? `${voltage}V` : "—"}</strong>
-                        </Typography>
-                        <Typography sx={{ fontSize: "0.68rem" }} color="text.secondary">
-                            Czas: <strong>{now.toLocaleString("pl-PL")}</strong>
-                        </Typography>
-                    </Box>
 
                     <Container component="main" className="container">
                         <Drawer
@@ -257,6 +255,10 @@ const Layout = ({ children }) => {
                                 <ListItemButton onClick={handleLogs}>
                                     <ListItemIcon><NewspaperIcon /></ListItemIcon>
                                     <ListItemText primary="Logi z systemu" />
+                                </ListItemButton>
+                                <ListItemButton onClick={handleVoltage}>
+                                    <ListItemIcon><BoltIcon /></ListItemIcon>
+                                    <ListItemText primary="Napięcie zasilania" />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleHelp}>
                                     <ListItemIcon><HelpOutlineIcon /></ListItemIcon>

@@ -20,12 +20,12 @@ def _seed(app):
         AlarmState.seed_defaults()
 
 
-def test_get_alarm_states_returns_seeded_four(client, app):
+def test_get_alarm_states_returns_seeded_five(client, app):
     _seed(app)
     resp = client.get('/alarm-states')
     states = resp.get_json()['states']
-    assert len(states) == 4
-    assert {s['event_type'] for s in states} == {'fire', 'gas', 'water', 'door'}
+    assert len(states) == 5
+    assert {s['event_type'] for s in states} == {'fire', 'gas', 'water', 'door', 'voltage'}
 
 
 def test_simulate_requires_auth(client, app):

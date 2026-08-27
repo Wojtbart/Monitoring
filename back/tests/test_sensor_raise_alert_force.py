@@ -21,8 +21,8 @@ def _seed_enabled_email_rule(app, event_type):
 
 
 def test_raise_alert_sets_alarm_state_active(app, monkeypatch):
-    monkeypatch.setattr('notifications.send_email', lambda *a: None)
-    monkeypatch.setattr('notifications.send_sms', lambda *a: None)
+    monkeypatch.setattr('notifications.send_email', lambda *a, **k: None)
+    monkeypatch.setattr('notifications.send_sms', lambda *a, **k: None)
     with app.app_context():
         AlarmState.seed_defaults()
 
@@ -36,8 +36,8 @@ def test_raise_alert_sets_alarm_state_active(app, monkeypatch):
 
 def test_raise_alert_respects_cooldown_without_force(app, monkeypatch):
     calls = []
-    monkeypatch.setattr('notifications.send_email', lambda *a: calls.append(a))
-    monkeypatch.setattr('notifications.send_sms', lambda *a: calls.append(a))
+    monkeypatch.setattr('notifications.send_email', lambda *a, **k: calls.append(a))
+    monkeypatch.setattr('notifications.send_sms', lambda *a, **k: calls.append(a))
     with app.app_context():
         AlarmState.seed_defaults()
     _seed_enabled_email_rule(app, 'fire')
@@ -51,8 +51,8 @@ def test_raise_alert_respects_cooldown_without_force(app, monkeypatch):
 
 def test_raise_alert_force_bypasses_cooldown(app, monkeypatch):
     calls = []
-    monkeypatch.setattr('notifications.send_email', lambda *a: calls.append(a))
-    monkeypatch.setattr('notifications.send_sms', lambda *a: calls.append(a))
+    monkeypatch.setattr('notifications.send_email', lambda *a, **k: calls.append(a))
+    monkeypatch.setattr('notifications.send_sms', lambda *a, **k: calls.append(a))
     with app.app_context():
         AlarmState.seed_defaults()
     _seed_enabled_email_rule(app, 'fire')

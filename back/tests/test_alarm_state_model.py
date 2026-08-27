@@ -1,11 +1,11 @@
 from models import db, AlarmState
 
 
-def test_seed_defaults_creates_four_rows(app):
+def test_seed_defaults_creates_five_rows(app):
     with app.app_context():
         AlarmState.seed_defaults()
-        assert AlarmState.query.count() == 4
-        assert {s.event_type for s in AlarmState.query.all()} == {'fire', 'gas', 'water', 'door'}
+        assert AlarmState.query.count() == 5
+        assert {s.event_type for s in AlarmState.query.all()} == {'fire', 'gas', 'water', 'door', 'voltage'}
         assert all(s.active is False for s in AlarmState.query.all())
 
 
@@ -13,7 +13,7 @@ def test_seed_defaults_is_idempotent(app):
     with app.app_context():
         AlarmState.seed_defaults()
         AlarmState.seed_defaults()
-        assert AlarmState.query.count() == 4
+        assert AlarmState.query.count() == 5
 
 
 def test_trigger_sets_active_and_timestamp(app):
@@ -29,7 +29,7 @@ def test_trigger_on_unknown_type_does_nothing(app):
     with app.app_context():
         AlarmState.seed_defaults()
         AlarmState.trigger('unknown')  # nie rzuca wyjątku
-        assert AlarmState.query.count() == 4
+        assert AlarmState.query.count() == 5
 
 
 def test_clear_sets_inactive_and_timestamp(app):
@@ -54,7 +54,7 @@ def test_get_all_returns_serializable_dicts(app):
         AlarmState.seed_defaults()
         AlarmState.trigger('water')
         states = AlarmState.get_all()
-        assert len(states) == 4
+        assert len(states) == 5
         water = next(s for s in states if s['event_type'] == 'water')
         assert water['active'] is True
         assert water['last_triggered_at'] is not None

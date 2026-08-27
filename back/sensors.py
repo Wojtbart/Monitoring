@@ -14,6 +14,7 @@ class Sensor:
         self.app = app
         self.camera = camera
         self._apply_settings(settings)
+        self._load_voltage_threshold()
 
         self.is_recording = False
         self.is_user_recording = False
@@ -47,6 +48,17 @@ class Sensor:
     def update_settings(self, settings):
         self._apply_settings(settings)
 
+    def _load_voltage_threshold(self):
+        from models import VoltageThreshold
+        with self.app.app_context():
+            threshold = VoltageThreshold.get_or_create()
+            self.min_voltage = threshold.min_voltage
+            self.max_voltage = threshold.max_voltage
+
+    def update_voltage_threshold(self, min_voltage, max_voltage):
+        self.min_voltage = min_voltage
+        self.max_voltage = max_voltage
+
     def get_current_data(self):
         return {
             'temperature': self.temperature,
@@ -76,26 +88,38 @@ class Sensor:
 
     def _raise_alert(self, event_type, sensor_name, is_warning, desc, force=False):
         print(f'[sensor] {desc}')
-        if not self._log(sensor_name, is_warning, desc, force=force):
-            return
-        from models import AlarmState
+        from models import AlarmState, NotificationRule, Log, alarm_should_fire
         with self.app.app_context():
+            state = AlarmState.query.filter_by(event_type=event_type).first()
+            rule = NotificationRule.query.filter_by(event_type=event_type).first()
+            notify_again_minutes = rule.notify_again_minutes if rule else 30
+            if not alarm_should_fire(state, notify_again_minutes, force=force):
+                return
+            Log.add_log(datetime.now(), sensor_name, is_warning, desc)
             AlarmState.trigger(event_type)
         self._notify(event_type, desc)
 
     def _notify(self, event_type, desc):
-        from models import NotificationRule, EmailRecipient, SmsRecipient
+        from datetime import datetime as dt
+        from models import db, NotificationRule, EmailGroup, SmsGroup, EmailRecipient, SmsRecipient, is_within_schedule
         from notifications import send_email, send_sms
         with self.app.app_context():
             rule = NotificationRule.query.filter_by(event_type=event_type).first()
             if not rule:
                 return
             if rule.email_enabled and rule.email_group_id:
-                emails = [r.email for r in EmailRecipient.query.filter_by(group_id=rule.email_group_id).all()]
-                send_email(emails, f'Alarm: {desc}', desc)
+                group = db.session.get(EmailGroup, rule.email_group_id)
+                if group and is_within_schedule(group.schedule, dt.now()):
+                    emails = [r.email for r in EmailRecipient.query.filter_by(group_id=rule.email_group_id).all()]
+                    subject = rule.email_custom_subject if (rule.email_custom_subject_enabled and rule.email_custom_subject) else f'Alarm: {desc}'
+                    attachment = self.camera.capture_jpeg() if rule.email_attach_camera else None
+                    send_email(emails, subject, desc, attachment_bytes=attachment)
             if rule.sms_enabled and rule.sms_group_id:
-                numbers = [r.phone_number for r in SmsRecipient.query.filter_by(group_id=rule.sms_group_id).all()]
-                send_sms(numbers, desc)
+                group = db.session.get(SmsGroup, rule.sms_group_id)
+                if group and is_within_schedule(group.schedule, dt.now()):
+                    numbers = [r.phone_number for r in SmsRecipient.query.filter_by(group_id=rule.sms_group_id).all()]
+                    sms_text = rule.sms_custom_message if (rule.sms_custom_enabled and rule.sms_custom_message) else desc
+                    send_sms(numbers, sms_text)
 
     def _read_sensors(self):
         """Odczyt z hardware. Zastąp mockowane wartości prawdziwymi na RPi."""
@@ -159,6 +183,9 @@ class Sensor:
             self._raise_alert('water', 'Czujnik wody', True, 'Wykryto wodę!')
         if self.door:
             self._raise_alert('door', 'Czujnik drzwi', False, 'Otwarto drzwi')
+        if self.voltage < self.min_voltage or self.voltage > self.max_voltage:
+            self._raise_alert('voltage', 'Napięcie zasilania', True,
+                               f'Napięcie poza normą: {self.voltage}V (próg {self.min_voltage}-{self.max_voltage}V)')
 
     def _check_test_times(self):
         current_time = time.strftime('%H:%M:%S', time.localtime())

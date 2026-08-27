@@ -128,15 +128,46 @@ class DeviceSensor(db.Model):
     max_temperature = db.Column(db.Float, nullable=False, default=35.0)
     min_humidity = db.Column(db.Float, nullable=False, default=20.0)
     max_humidity = db.Column(db.Float, nullable=False, default=80.0)
+    min_temperature_critical = db.Column(db.Float, nullable=False, default=5.0)
+    max_temperature_critical = db.Column(db.Float, nullable=False, default=45.0)
+    min_humidity_critical = db.Column(db.Float, nullable=False, default=10.0)
+    max_humidity_critical = db.Column(db.Float, nullable=False, default=90.0)
+    alert_delay_seconds = db.Column(db.Integer, nullable=False, default=0)
+    lowest_temperature = db.Column(db.Float, nullable=True)
+    lowest_temperature_at = db.Column(db.DateTime, nullable=True)
+    highest_temperature = db.Column(db.Float, nullable=True)
+    highest_temperature_at = db.Column(db.DateTime, nullable=True)
+    lowest_humidity = db.Column(db.Float, nullable=True)
+    lowest_humidity_at = db.Column(db.DateTime, nullable=True)
+    highest_humidity = db.Column(db.Float, nullable=True)
+    highest_humidity_at = db.Column(db.DateTime, nullable=True)
 
     __table_args__ = (
         db.UniqueConstraint('rack_id', 'unit', name='uq_device_sensor_rack_unit'),
     )
 
+    HISTORY_RETENTION_DAYS = 35
+
+    @staticmethod
+    def _update_extremes(device):
+        now = device.updated_at
+        if device.lowest_temperature is None or device.temperature < device.lowest_temperature:
+            device.lowest_temperature = device.temperature
+            device.lowest_temperature_at = now
+        if device.highest_temperature is None or device.temperature > device.highest_temperature:
+            device.highest_temperature = device.temperature
+            device.highest_temperature_at = now
+        if device.lowest_humidity is None or device.humidity < device.lowest_humidity:
+            device.lowest_humidity = device.humidity
+            device.lowest_humidity_at = now
+        if device.highest_humidity is None or device.humidity > device.highest_humidity:
+            device.highest_humidity = device.humidity
+            device.highest_humidity_at = now
+
     @staticmethod
     def get_or_create_reading(rack_id, unit):
         import random
-        from datetime import datetime
+        from datetime import datetime, timedelta
 
         device = DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
         if device is None:
@@ -158,6 +189,7 @@ class DeviceSensor(db.Model):
             device.temperature = round(min(45.0, max(10.0, new_temp)), 1)
             device.humidity = round(min(95.0, max(10.0, new_humidity)), 1)
             device.updated_at = datetime.now()
+        DeviceSensor._update_extremes(device)
         db.session.commit()
 
         db.session.add(DeviceSensorHistory(
@@ -169,20 +201,40 @@ class DeviceSensor(db.Model):
         ))
         db.session.commit()
 
-        excess = (DeviceSensorHistory.query
-                  .filter_by(rack_id=rack_id, unit=unit)
-                  .order_by(DeviceSensorHistory.recorded_at.desc())
-                  .offset(50)
-                  .all())
-        if excess:
-            for row in excess:
-                db.session.delete(row)
-            db.session.commit()
+        cutoff = datetime.now() - timedelta(days=DeviceSensor.HISTORY_RETENTION_DAYS)
+        (DeviceSensorHistory.query
+         .filter_by(rack_id=rack_id, unit=unit)
+         .filter(DeviceSensorHistory.recorded_at < cutoff)
+         .delete())
+        db.session.commit()
 
         return device
 
     @staticmethod
-    def update_thresholds(rack_id, unit, min_temperature, max_temperature, min_humidity, max_humidity):
+    def clear_records(rack_id, unit):
+        device = DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
+        if not device:
+            return None
+        device.lowest_temperature = device.temperature
+        device.lowest_temperature_at = device.updated_at
+        device.highest_temperature = device.temperature
+        device.highest_temperature_at = device.updated_at
+        device.lowest_humidity = device.humidity
+        device.lowest_humidity_at = device.updated_at
+        device.highest_humidity = device.humidity
+        device.highest_humidity_at = device.updated_at
+        db.session.commit()
+        return device
+
+    @staticmethod
+    def clear_history(rack_id, unit):
+        DeviceSensorHistory.query.filter_by(rack_id=rack_id, unit=unit).delete()
+        db.session.commit()
+
+    @staticmethod
+    def update_thresholds(rack_id, unit, min_temperature, max_temperature, min_humidity, max_humidity,
+                           min_temperature_critical, max_temperature_critical,
+                           min_humidity_critical, max_humidity_critical, alert_delay_seconds):
         device = DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
         if device is None:
             return None
@@ -190,6 +242,11 @@ class DeviceSensor(db.Model):
         device.max_temperature = max_temperature
         device.min_humidity = min_humidity
         device.max_humidity = max_humidity
+        device.min_temperature_critical = min_temperature_critical
+        device.max_temperature_critical = max_temperature_critical
+        device.min_humidity_critical = min_humidity_critical
+        device.max_humidity_critical = max_humidity_critical
+        device.alert_delay_seconds = alert_delay_seconds
         db.session.commit()
         return device
 
@@ -204,10 +261,21 @@ class DeviceSensorHistory(db.Model):
     recorded_at = db.Column(db.DateTime, nullable=False)
 
 
+DEFAULT_SCHEDULE = '1' * 168  # 7 dni x 24h, zawsze aktywny
+
+
+def is_within_schedule(schedule, when):
+    if not schedule:
+        return True
+    index = when.weekday() * 24 + when.hour
+    return index < len(schedule) and schedule[index] == '1'
+
+
 class EmailGroup(db.Model):
     __tablename__ = 'email_groups'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), unique=True, nullable=False)
+    schedule = db.Column(db.String(168), nullable=False, default=DEFAULT_SCHEDULE)
 
     @staticmethod
     def get_all_with_recipients():
@@ -216,6 +284,7 @@ class EmailGroup(db.Model):
             {
                 'id': g.id,
                 'name': g.name,
+                'schedule': g.schedule,
                 'recipients': [
                     {'id': r.id, 'email': r.email}
                     for r in EmailRecipient.query.filter_by(group_id=g.id).all()
@@ -223,6 +292,15 @@ class EmailGroup(db.Model):
             }
             for g in groups
         ]
+
+    @staticmethod
+    def update_schedule(group_id, schedule):
+        group = db.session.get(EmailGroup, group_id)
+        if not group:
+            return None
+        group.schedule = schedule
+        db.session.commit()
+        return group
 
     @staticmethod
     def add_group(name):
@@ -273,6 +351,7 @@ class SmsGroup(db.Model):
     __tablename__ = 'sms_groups'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), unique=True, nullable=False)
+    schedule = db.Column(db.String(168), nullable=False, default=DEFAULT_SCHEDULE)
 
     @staticmethod
     def get_all_with_recipients():
@@ -281,6 +360,7 @@ class SmsGroup(db.Model):
             {
                 'id': g.id,
                 'name': g.name,
+                'schedule': g.schedule,
                 'recipients': [
                     {'id': r.id, 'phone_number': r.phone_number}
                     for r in SmsRecipient.query.filter_by(group_id=g.id).all()
@@ -288,6 +368,15 @@ class SmsGroup(db.Model):
             }
             for g in groups
         ]
+
+    @staticmethod
+    def update_schedule(group_id, schedule):
+        group = db.session.get(SmsGroup, group_id)
+        if not group:
+            return None
+        group.schedule = schedule
+        db.session.commit()
+        return group
 
     @staticmethod
     def add_group(name):
@@ -334,7 +423,7 @@ class SmsRecipient(db.Model):
     phone_number = db.Column(db.String(20), nullable=False)
 
 
-NOTIFICATION_EVENT_TYPES = ('fire', 'gas', 'water', 'door', 'device_threshold')
+NOTIFICATION_EVENT_TYPES = ('fire', 'gas', 'water', 'door', 'device_threshold', 'voltage')
 
 
 class NotificationRule(db.Model):
@@ -345,6 +434,13 @@ class NotificationRule(db.Model):
     email_group_id = db.Column(db.Integer, db.ForeignKey('email_groups.id'), nullable=True)
     sms_enabled = db.Column(db.Boolean, nullable=False, default=False)
     sms_group_id = db.Column(db.Integer, db.ForeignKey('sms_groups.id'), nullable=True)
+    notify_again_minutes = db.Column(db.Integer, nullable=False, default=30)
+    sms_custom_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    sms_custom_message = db.Column(db.String(255), nullable=True)
+    notify_on_return_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    email_custom_subject_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    email_custom_subject = db.Column(db.String(255), nullable=True)
+    email_attach_camera = db.Column(db.Boolean, nullable=False, default=False)
 
     @staticmethod
     def seed_defaults():
@@ -362,6 +458,13 @@ class NotificationRule(db.Model):
                 'email_group_id': r.email_group_id,
                 'sms_enabled': r.sms_enabled,
                 'sms_group_id': r.sms_group_id,
+                'notify_again_minutes': r.notify_again_minutes,
+                'sms_custom_enabled': r.sms_custom_enabled,
+                'sms_custom_message': r.sms_custom_message,
+                'notify_on_return_enabled': r.notify_on_return_enabled,
+                'email_custom_subject_enabled': r.email_custom_subject_enabled,
+                'email_custom_subject': r.email_custom_subject,
+                'email_attach_camera': r.email_attach_camera,
             }
             for r in NotificationRule.query.all()
         ]
@@ -376,10 +479,17 @@ class NotificationRule(db.Model):
             rule.email_group_id = rule_data.get('email_group_id')
             rule.sms_enabled = rule_data['sms_enabled']
             rule.sms_group_id = rule_data.get('sms_group_id')
+            rule.notify_again_minutes = rule_data.get('notify_again_minutes', 30)
+            rule.sms_custom_enabled = rule_data.get('sms_custom_enabled', False)
+            rule.sms_custom_message = rule_data.get('sms_custom_message')
+            rule.notify_on_return_enabled = rule_data.get('notify_on_return_enabled', False)
+            rule.email_custom_subject_enabled = rule_data.get('email_custom_subject_enabled', False)
+            rule.email_custom_subject = rule_data.get('email_custom_subject')
+            rule.email_attach_camera = rule_data.get('email_attach_camera', False)
         db.session.commit()
 
 
-ALARM_EVENT_TYPES = ('fire', 'gas', 'water', 'door')
+ALARM_EVENT_TYPES = ('fire', 'gas', 'water', 'door', 'voltage')
 
 
 class AlarmState(db.Model):
@@ -412,9 +522,12 @@ class AlarmState(db.Model):
     @staticmethod
     def trigger(event_type):
         from datetime import datetime
+        if event_type not in ALARM_EVENT_TYPES:
+            return
         state = AlarmState.query.filter_by(event_type=event_type).first()
         if not state:
-            return
+            state = AlarmState(event_type=event_type)
+            db.session.add(state)
         state.active = True
         state.last_triggered_at = datetime.now()
         db.session.commit()
@@ -431,43 +544,153 @@ class AlarmState(db.Model):
         return True
 
 
+DEVICE_ALARM_SEVERITIES = ('non_critical', 'critical')
+
+
 class DeviceAlarmState(db.Model):
     __tablename__ = 'device_alarm_states'
     id = db.Column(db.Integer, primary_key=True)
     rack_id = db.Column(db.String(20), nullable=False)
     unit = db.Column(db.Integer, nullable=False)
     metric = db.Column(db.String(20), nullable=False)
+    severity = db.Column(db.String(20), nullable=False, default='non_critical')
     active = db.Column(db.Boolean, nullable=False, default=False)
     last_triggered_at = db.Column(db.DateTime, nullable=True)
     cleared_at = db.Column(db.DateTime, nullable=True)
+    pending_since = db.Column(db.DateTime, nullable=True)
+    return_notified = db.Column(db.Boolean, nullable=False, default=False)
 
     __table_args__ = (
-        db.UniqueConstraint('rack_id', 'unit', 'metric', name='uq_device_alarm_rack_unit_metric'),
+        db.UniqueConstraint('rack_id', 'unit', 'metric', 'severity', name='uq_device_alarm_rack_unit_metric_severity'),
     )
 
     @staticmethod
-    def is_active(rack_id, unit, metric):
-        state = DeviceAlarmState.query.filter_by(rack_id=rack_id, unit=unit, metric=metric).first()
+    def get(rack_id, unit, metric, severity):
+        return DeviceAlarmState.query.filter_by(rack_id=rack_id, unit=unit, metric=metric, severity=severity).first()
+
+    @staticmethod
+    def get_or_create(rack_id, unit, metric, severity):
+        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
+        if not state:
+            state = DeviceAlarmState(rack_id=rack_id, unit=unit, metric=metric, severity=severity)
+            db.session.add(state)
+            db.session.commit()
+        return state
+
+    @staticmethod
+    def is_active(rack_id, unit, metric, severity):
+        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
         return bool(state and state.active)
 
     @staticmethod
-    def trigger(rack_id, unit, metric):
+    def trigger(rack_id, unit, metric, severity):
         from datetime import datetime
-        state = DeviceAlarmState.query.filter_by(rack_id=rack_id, unit=unit, metric=metric).first()
+        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
         if not state:
-            state = DeviceAlarmState(rack_id=rack_id, unit=unit, metric=metric)
+            state = DeviceAlarmState(rack_id=rack_id, unit=unit, metric=metric, severity=severity)
             db.session.add(state)
         state.active = True
         state.last_triggered_at = datetime.now()
+        state.pending_since = None
+        state.return_notified = False
         db.session.commit()
 
     @staticmethod
-    def clear(rack_id, unit, metric):
-        state = DeviceAlarmState.query.filter_by(rack_id=rack_id, unit=unit, metric=metric).first()
+    def clear(rack_id, unit, metric, severity):
+        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
         if not state:
             return False
         from datetime import datetime
         state.active = False
         state.cleared_at = datetime.now()
+        state.pending_since = None
+        state.return_notified = False
         db.session.commit()
         return True
+
+    @staticmethod
+    def mark_pending(rack_id, unit, metric, severity):
+        from datetime import datetime
+        state = DeviceAlarmState.get_or_create(rack_id, unit, metric, severity)
+        if state.pending_since is None:
+            state.pending_since = datetime.now()
+            db.session.commit()
+        return state.pending_since
+
+    @staticmethod
+    def clear_pending(rack_id, unit, metric, severity):
+        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
+        if state and state.pending_since is not None:
+            state.pending_since = None
+            db.session.commit()
+
+    @staticmethod
+    def mark_return_notified(rack_id, unit, metric, severity):
+        state = DeviceAlarmState.get_or_create(rack_id, unit, metric, severity)
+        state.return_notified = True
+        db.session.commit()
+
+
+def alarm_should_fire(state, notify_again_minutes, force=False):
+    if force or not state or not state.active:
+        return True
+    if state.last_triggered_at is None:
+        return True
+    from datetime import datetime
+    return (datetime.now() - state.last_triggered_at).total_seconds() >= notify_again_minutes * 60
+
+
+class SmtpSettings(db.Model):
+    __tablename__ = 'smtp_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    host = db.Column(db.String(255), nullable=True)
+    port = db.Column(db.Integer, nullable=False, default=587)
+    username = db.Column(db.String(255), nullable=True)
+    password = db.Column(db.String(255), nullable=True)
+    from_address = db.Column(db.String(255), nullable=True)
+    use_tls = db.Column(db.Boolean, nullable=False, default=True)
+
+    @staticmethod
+    def get_or_create():
+        settings = SmtpSettings.query.first()
+        if not settings:
+            settings = SmtpSettings()
+            db.session.add(settings)
+            db.session.commit()
+        return settings
+
+    @staticmethod
+    def update(host, port, username, password, from_address, use_tls):
+        settings = SmtpSettings.get_or_create()
+        settings.host = host
+        settings.port = port
+        settings.username = username
+        settings.password = password
+        settings.from_address = from_address
+        settings.use_tls = use_tls
+        db.session.commit()
+        return settings
+
+
+class VoltageThreshold(db.Model):
+    __tablename__ = 'voltage_thresholds'
+    id = db.Column(db.Integer, primary_key=True)
+    min_voltage = db.Column(db.Float, nullable=False, default=11.0)
+    max_voltage = db.Column(db.Float, nullable=False, default=15.0)
+
+    @staticmethod
+    def get_or_create():
+        threshold = VoltageThreshold.query.first()
+        if not threshold:
+            threshold = VoltageThreshold(min_voltage=11.0, max_voltage=15.0)
+            db.session.add(threshold)
+            db.session.commit()
+        return threshold
+
+    @staticmethod
+    def update(min_voltage, max_voltage):
+        threshold = VoltageThreshold.get_or_create()
+        threshold.min_voltage = min_voltage
+        threshold.max_voltage = max_voltage
+        db.session.commit()
+        return threshold

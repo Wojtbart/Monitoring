@@ -1,27 +1,39 @@
-import os
 import smtplib
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
 
 
-def send_email(to_addresses, subject, body):
+def send_email(to_addresses, subject, body, attachment_bytes=None, attachment_filename='zdjecie.jpg'):
     if not to_addresses:
         return
-    host = os.getenv('SMTP_HOST')
-    port = int(os.getenv('SMTP_PORT', 587))
-    user = os.getenv('SMTP_USER')
-    password = os.getenv('SMTP_PASSWORD')
-    from_addr = os.getenv('SMTP_FROM', user)
-    if not host or not user or not password:
+    from models import SmtpSettings
+    settings = SmtpSettings.get_or_create()
+    host = settings.host
+    port = settings.port
+    user = settings.username
+    password = settings.password
+    from_addr = settings.from_address or user
+    if not host or not from_addr:
         print('[notifications] SMTP nieskonfigurowany — pomijam wysyłkę e-mail')
         return
-    msg = MIMEText(body)
+
+    if attachment_bytes:
+        msg = MIMEMultipart()
+        msg.attach(MIMEText(body))
+        image = MIMEImage(attachment_bytes, _subtype='jpeg', name=attachment_filename)
+        msg.attach(image)
+    else:
+        msg = MIMEText(body)
     msg['Subject'] = subject
     msg['From'] = from_addr
     msg['To'] = ', '.join(to_addresses)
     try:
         with smtplib.SMTP(host, port, timeout=10) as server:
-            server.starttls()
-            server.login(user, password)
+            if settings.use_tls:
+                server.starttls()
+            if user and password:
+                server.login(user, password)
             server.sendmail(from_addr, to_addresses, msg.as_string())
     except Exception as e:
         print(f'[notifications] błąd wysyłki e-mail: {e}')

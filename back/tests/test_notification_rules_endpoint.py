@@ -14,12 +14,12 @@ def _seed(app):
         NotificationRule.seed_defaults()
 
 
-def test_get_rules_returns_seeded_five(client, app):
+def test_get_rules_returns_seeded_six(client, app):
     _seed(app)
     resp = client.get('/notification-rules')
     rules = resp.get_json()['rules']
-    assert len(rules) == 5
-    assert {r['event_type'] for r in rules} == {'fire', 'gas', 'water', 'door', 'device_threshold'}
+    assert len(rules) == 6
+    assert {r['event_type'] for r in rules} == {'fire', 'gas', 'water', 'door', 'device_threshold', 'voltage'}
     assert all(r['email_enabled'] is False and r['sms_enabled'] is False for r in rules)
 
 
@@ -27,7 +27,7 @@ def test_seed_defaults_is_idempotent(app):
     with app.app_context():
         NotificationRule.seed_defaults()
         NotificationRule.seed_defaults()
-        assert NotificationRule.query.count() == 5
+        assert NotificationRule.query.count() == 6
 
 
 def test_update_rules_requires_auth(client, app):
@@ -48,6 +48,7 @@ def test_update_rules_success(client, app):
         {'event_type': 'water', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
         {'event_type': 'door', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
         {'event_type': 'device_threshold', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
+        {'event_type': 'voltage', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
     ]}
     resp = client.put('/notification-rules', json=payload, headers={'Authorization': f'Bearer {token}'})
     assert resp.status_code == 200
@@ -73,6 +74,7 @@ def test_update_rules_rejects_unknown_group(client, app):
         {'event_type': 'water', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
         {'event_type': 'door', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
         {'event_type': 'device_threshold', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
+        {'event_type': 'voltage', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
     ]}
     resp = client.put('/notification-rules', json=payload, headers={'Authorization': f'Bearer {token}'})
     assert resp.status_code == 400

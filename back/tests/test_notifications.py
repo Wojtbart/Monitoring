@@ -1,30 +1,66 @@
 from unittest.mock import patch
+from models import SmtpSettings, db
 import notifications
 
 
-def test_send_email_skips_when_smtp_not_configured(monkeypatch, capsys):
-    monkeypatch.delenv('SMTP_HOST', raising=False)
-    notifications.send_email(['a@b.com'], 'Subject', 'Body')
+def test_send_email_skips_when_smtp_not_configured(app, capsys):
+    with app.app_context():
+        SmtpSettings.get_or_create()
+        notifications.send_email(['a@b.com'], 'Subject', 'Body')
     captured = capsys.readouterr()
     assert 'SMTP nieskonfigurowany' in captured.out
 
 
-def test_send_email_skips_when_no_recipients():
-    with patch('smtplib.SMTP') as mock_smtp:
-        notifications.send_email([], 'Subject', 'Body')
-        mock_smtp.assert_not_called()
+def test_send_email_skips_when_no_recipients(app):
+    with app.app_context():
+        with patch('smtplib.SMTP') as mock_smtp:
+            notifications.send_email([], 'Subject', 'Body')
+            mock_smtp.assert_not_called()
 
 
-def test_send_email_sends_via_smtp(monkeypatch):
-    monkeypatch.setenv('SMTP_HOST', 'smtp.example.com')
-    monkeypatch.setenv('SMTP_USER', 'user')
-    monkeypatch.setenv('SMTP_PASSWORD', 'pass')
-    with patch('smtplib.SMTP') as mock_smtp:
-        instance = mock_smtp.return_value.__enter__.return_value
-        notifications.send_email(['a@b.com'], 'Subject', 'Body')
-        instance.starttls.assert_called_once()
-        instance.login.assert_called_once_with('user', 'pass')
-        instance.sendmail.assert_called_once()
+def _configure_smtp(app, use_tls=True):
+    with app.app_context():
+        SmtpSettings.update('smtp.example.com', 587, 'user', 'pass', 'from@example.com', use_tls)
+
+
+def test_send_email_sends_via_smtp(app):
+    _configure_smtp(app)
+    with app.app_context():
+        with patch('smtplib.SMTP') as mock_smtp:
+            instance = mock_smtp.return_value.__enter__.return_value
+            notifications.send_email(['a@b.com'], 'Subject', 'Body')
+            instance.starttls.assert_called_once()
+            instance.login.assert_called_once_with('user', 'pass')
+            instance.sendmail.assert_called_once()
+
+
+def test_send_email_skips_starttls_when_disabled(app):
+    _configure_smtp(app, use_tls=False)
+    with app.app_context():
+        with patch('smtplib.SMTP') as mock_smtp:
+            instance = mock_smtp.return_value.__enter__.return_value
+            notifications.send_email(['a@b.com'], 'Subject', 'Body')
+            instance.starttls.assert_not_called()
+
+
+def test_send_email_skips_login_when_no_credentials(app):
+    with app.app_context():
+        SmtpSettings.update('smtp.example.com', 587, None, None, 'from@example.com', True)
+        with patch('smtplib.SMTP') as mock_smtp:
+            instance = mock_smtp.return_value.__enter__.return_value
+            notifications.send_email(['a@b.com'], 'Subject', 'Body')
+            instance.login.assert_not_called()
+            instance.sendmail.assert_called_once()
+
+
+def test_send_email_with_attachment_sends_multipart(app):
+    _configure_smtp(app)
+    with app.app_context():
+        with patch('smtplib.SMTP') as mock_smtp:
+            instance = mock_smtp.return_value.__enter__.return_value
+            notifications.send_email(['a@b.com'], 'Subject', 'Body', attachment_bytes=b'\xff\xd8\xff')
+            args, _ = instance.sendmail.call_args
+            assert 'Content-Type: image/jpeg' in args[2] or 'image' in args[2].lower()
 
 
 def test_send_sms_logs_mock(capsys):

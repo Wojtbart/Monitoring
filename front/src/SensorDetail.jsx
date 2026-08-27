@@ -14,6 +14,44 @@ const TYPE_CONFIG = {
     humidity:    { label: "Wilgotność",  unit: "%",  icon: WaterDropIcon,  color: "#42a5f5" },
 };
 
+const SEVERITIES = [
+    { key: "non_critical", label: "Non-Critical (ostrzeżenie)", color: "#ff9800" },
+    { key: "critical", label: "Critical (krytyczny)", color: "#e53935" },
+];
+
+const RANGE_OPTIONS = [
+    { key: "live", label: "Na żywo (10 min)" },
+    { key: "24h", label: "24 godziny" },
+    { key: "week", label: "Ostatni tydzień" },
+    { key: "month", label: "Ostatni miesiąc" },
+];
+
+function GaugeBar({ value, minCrit, maxCrit, minNonCrit, maxNonCrit, unit }) {
+    if ([value, minCrit, maxCrit, minNonCrit, maxNonCrit].some(v => v == null)) return null;
+    const span = (maxCrit - minCrit) || 1;
+    const pct = v => Math.max(0, Math.min(100, ((v - minCrit) / span) * 100));
+    const markerPct = pct(value);
+    const zoneStart = pct(minNonCrit);
+    const zoneEnd = pct(maxNonCrit);
+    return (
+        <Box sx={{ mb: 2 }}>
+            <Box sx={{ position: "relative", height: 20, borderRadius: 1, overflow: "hidden", display: "flex" }}>
+                <Box sx={{ width: `${zoneStart}%`, bgcolor: "#e53935" }} />
+                <Box sx={{ width: `${zoneEnd - zoneStart}%`, bgcolor: "#2e7d32" }} />
+                <Box sx={{ width: `${100 - zoneEnd}%`, bgcolor: "#e53935" }} />
+                <Box sx={{
+                    position: "absolute", left: `calc(${markerPct}% - 1px)`, top: -3, bottom: -3,
+                    width: 2, bgcolor: "#1a1a2e",
+                }} />
+            </Box>
+            <Box sx={{ display: "flex", justifyContent: "space-between", mt: 0.5 }}>
+                <Typography variant="caption" color="text.secondary">{minCrit}{unit}</Typography>
+                <Typography variant="caption" color="text.secondary">{maxCrit}{unit}</Typography>
+            </Box>
+        </Box>
+    );
+}
+
 export default function SensorDetail() {
     const { rackId, unit, type } = useParams();
     const navigate = useNavigate();
@@ -24,14 +62,32 @@ export default function SensorDetail() {
     const [history, setHistory] = useState([]);
     const [minInput, setMinInput] = useState("");
     const [maxInput, setMaxInput] = useState("");
+    const [minCritInput, setMinCritInput] = useState("");
+    const [maxCritInput, setMaxCritInput] = useState("");
+    const [delayInput, setDelayInput] = useState("");
     const [saveStatus, setSaveStatus] = useState(null);
     const [alarmStatus, setAlarmStatus] = useState(null);
+    const [range, setRange] = useState("live");
+    const [recordsStatus, setRecordsStatus] = useState(null);
+    const [graphStatus, setGraphStatus] = useState(null);
+
+    const fieldName = (severity) => {
+        const suffix = severity === "critical" ? "_critical" : "";
+        return {
+            min: `min_${type}${suffix}`,
+            max: `max_${type}${suffix}`,
+        };
+    };
 
     useEffect(() => {
-        if (current) {
-            setMinInput(String(type === "temperature" ? current.min_temperature : current.min_humidity));
-            setMaxInput(String(type === "temperature" ? current.max_temperature : current.max_humidity));
-        }
+        if (!current) return;
+        const nc = fieldName("non_critical");
+        const cr = fieldName("critical");
+        setMinInput(String(current[nc.min]));
+        setMaxInput(String(current[nc.max]));
+        setMinCritInput(String(current[cr.min]));
+        setMaxCritInput(String(current[cr.max]));
+        setDelayInput(String(current.alert_delay_seconds));
     }, [current, type]);
 
     useEffect(() => {
@@ -49,41 +105,51 @@ export default function SensorDetail() {
     useEffect(() => {
         const fetchHistory = async () => {
             try {
-                const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}/${unit}/history`);
-                const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
-                setHistory(data.history.filter(row => new Date(row.recorded_at.replace(" ", "T")).getTime() >= tenMinutesAgo));
+                const params = range === "live" ? {} : { range };
+                const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}/${unit}/history`, { params });
+                if (range === "live") {
+                    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+                    setHistory(data.history.filter(row => new Date(row.recorded_at.replace(" ", "T")).getTime() >= tenMinutesAgo));
+                } else {
+                    setHistory(data.history);
+                }
             } catch (_) {}
         };
         fetchHistory();
         const iv = setInterval(fetchHistory, 20000);
         return () => clearInterval(iv);
-    }, [rackId, unit]);
+    }, [rackId, unit, range]);
 
     const value = current ? current[type] : null;
-    const min = current ? (type === "temperature" ? current.min_temperature : current.min_humidity) : null;
-    const max = current ? (type === "temperature" ? current.max_temperature : current.max_humidity) : null;
-    const status = value != null && min != null && max != null
-        ? (value < min || value > max ? "warning" : "ok")
-        : null;
+    const min = current ? current[fieldName("non_critical").min] : null;
+    const max = current ? current[fieldName("non_critical").max] : null;
+    const minCrit = current ? current[fieldName("critical").min] : null;
+    const maxCrit = current ? current[fieldName("critical").max] : null;
+    const status = value == null ? null
+        : (minCrit != null && maxCrit != null && (value < minCrit || value > maxCrit)) ? "crit"
+        : (min != null && max != null && (value < min || value > max)) ? "warning"
+        : "ok";
 
     const accessToken = localStorage.getItem("JWT");
 
     const handleSaveThresholds = async () => {
         const minVal = Number(minInput);
         const maxVal = Number(maxInput);
-        if (Number.isNaN(minVal) || Number.isNaN(maxVal) || minVal >= maxVal) {
+        const minCritVal = Number(minCritInput);
+        const maxCritVal = Number(maxCritInput);
+        const delayVal = Number(delayInput);
+        if ([minVal, maxVal, minCritVal, maxCritVal, delayVal].some(Number.isNaN) || minVal >= maxVal || minCritVal >= maxCritVal) {
             setSaveStatus({ type: "error", message: "Wartość minimalna musi być mniejsza niż maksymalna." });
             return;
         }
-        const payload = type === "temperature"
-            ? {
-                min_temperature: minVal, max_temperature: maxVal,
-                min_humidity: current.min_humidity, max_humidity: current.max_humidity,
-            }
-            : {
-                min_temperature: current.min_temperature, max_temperature: current.max_temperature,
-                min_humidity: minVal, max_humidity: maxVal,
-            };
+        const other = type === "temperature" ? "humidity" : "temperature";
+        const payload = {
+            [`min_${type}`]: minVal, [`max_${type}`]: maxVal,
+            [`min_${type}_critical`]: minCritVal, [`max_${type}_critical`]: maxCritVal,
+            [`min_${other}`]: current[`min_${other}`], [`max_${other}`]: current[`max_${other}`],
+            [`min_${other}_critical`]: current[`min_${other}_critical`], [`max_${other}_critical`]: current[`max_${other}_critical`],
+            alert_delay_seconds: delayVal,
+        };
         try {
             const { data } = await axios.put(
                 `${API_BASE}/device-sensors/${rackId}/${unit}/thresholds`,
@@ -98,15 +164,43 @@ export default function SensorDetail() {
         }
     };
 
-    const chartData = history.map(row => ({ time: row.recorded_at.slice(11, 19), value: row[type] }));
+    const chartData = history.map(row => ({
+        time: range === "week" || range === "month" ? row.recorded_at.slice(5, 16) : row.recorded_at.slice(11, 19),
+        value: row[type],
+    }));
 
-    const alarmActive = current
-        ? (type === "temperature" ? current.alarm_active_temperature : current.alarm_active_humidity)
-        : false;
-
-    const handleSimulate = async () => {
+    const handleClearRecords = async () => {
         try {
-            await axios.post(`${API_BASE}/device-sensors/${rackId}/${unit}/${type}/simulate`, {}, {
+            const { data } = await axios.delete(`${API_BASE}/device-sensors/${rackId}/${unit}/records`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            setCurrent(data);
+            setRecordsStatus({ type: "success", message: "Rekordy wyczyszczone." });
+        } catch (error) {
+            setRecordsStatus({ type: "error", message: error.response?.data?.message || "Błąd czyszczenia rekordów." });
+        }
+        setTimeout(() => setRecordsStatus(null), 2500);
+    };
+
+    const handleClearGraph = async () => {
+        if (!window.confirm("Usunąć historię wykresu dla tego czujnika?")) return;
+        try {
+            await axios.delete(`${API_BASE}/device-sensors/${rackId}/${unit}/history`, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            setHistory([]);
+            setGraphStatus({ type: "success", message: "Wykres wyczyszczony." });
+        } catch (error) {
+            setGraphStatus({ type: "error", message: error.response?.data?.message || "Błąd czyszczenia wykresu." });
+        }
+        setTimeout(() => setGraphStatus(null), 2500);
+    };
+
+    const alarmActive = (severity) => current ? current[`alarm_active_${type}_${severity}`] : false;
+
+    const handleSimulate = async (severity) => {
+        try {
+            await axios.post(`${API_BASE}/device-sensors/${rackId}/${unit}/${type}/${severity}/simulate`, {}, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             setAlarmStatus({ type: "success", message: "Alarm testowy wywołany — sprawdź powiadomienia." });
@@ -116,15 +210,12 @@ export default function SensorDetail() {
         setTimeout(() => setAlarmStatus(null), 3000);
     };
 
-    const handleClearAlarm = async () => {
+    const handleClearAlarm = async (severity) => {
         try {
-            await axios.delete(`${API_BASE}/device-sensors/${rackId}/${unit}/${type}/clear`, {
+            await axios.delete(`${API_BASE}/device-sensors/${rackId}/${unit}/${type}/${severity}/clear`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
-            setCurrent(prev => prev && {
-                ...prev,
-                [type === "temperature" ? "alarm_active_temperature" : "alarm_active_humidity"]: false,
-            });
+            setCurrent(prev => prev && { ...prev, [`alarm_active_${type}_${severity}`]: false });
             setAlarmStatus({ type: "success", message: "Alarm skasowany." });
         } catch (error) {
             setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd kasowania alarmu." });
@@ -144,7 +235,7 @@ export default function SensorDetail() {
                             Szafa {rackId} — Unit {unit}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                            {cfg.label} · wartość co 5s · wykres (ostatnie 10 min) co 20s
+                            {cfg.label} · wartość co 5s · wykres odświeżany co 20s
                         </Typography>
                     </Box>
                 </Box>
@@ -159,52 +250,109 @@ export default function SensorDetail() {
                     </Typography>
                     {status && (
                         <Chip
-                            label={status === "ok" ? "OK" : "WARN"}
+                            label={status === "ok" ? "OK" : status === "warning" ? "WARN" : "CRIT"}
                             size="small"
-                            sx={{ bgcolor: status === "ok" ? "#2e7d32" : "#ff9800", color: "white", fontWeight: "bold" }}
+                            sx={{
+                                bgcolor: status === "ok" ? "#2e7d32" : status === "warning" ? "#ff9800" : "#c62828",
+                                color: "white", fontWeight: "bold",
+                            }}
                         />
                     )}
                 </Box>
 
-                <Box sx={{
-                    p: 2, mb: 2, borderRadius: 1.5,
-                    bgcolor: alarmActive ? "#fdecea" : "#eaf6ec",
-                    border: alarmActive ? "1px solid #e53935" : "1px solid #2e7d32",
-                }}>
-                    <Typography variant="h6" fontWeight="bold" sx={{ color: alarmActive ? "#c62828" : "#2e7d32" }}>
-                        {alarmActive ? "ALARM — przekroczono próg, wymaga skasowania" : "Brak alarmu"}
-                    </Typography>
+                <GaugeBar
+                    value={value} minCrit={minCrit} maxCrit={maxCrit} minNonCrit={min} maxNonCrit={max}
+                    unit={cfg.unit}
+                />
+
+                <Box sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 2 }}>
+                        <Box>
+                            <Typography variant="caption" color="text.secondary">Najniższy odczyt</Typography>
+                            <Typography fontWeight="bold">
+                                {current?.[`lowest_${type}`] != null ? `${current[`lowest_${type}`]}${cfg.unit}` : "—"}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                {current?.[`lowest_${type}_at`] || ""}
+                            </Typography>
+                        </Box>
+                        <Box>
+                            <Typography variant="caption" color="text.secondary">Najwyższy odczyt</Typography>
+                            <Typography fontWeight="bold">
+                                {current?.[`highest_${type}`] != null ? `${current[`highest_${type}`]}${cfg.unit}` : "—"}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                                {current?.[`highest_${type}_at`] || ""}
+                            </Typography>
+                        </Box>
+                        <Button size="small" variant="outlined" onClick={handleClearRecords} sx={{ alignSelf: "center" }}>
+                            Wyczyść rekordy
+                        </Button>
+                    </Box>
+                    {recordsStatus && (
+                        <Alert severity={recordsStatus.type} sx={{ mt: 1.5 }} onClose={() => setRecordsStatus(null)}>
+                            {recordsStatus.message}
+                        </Alert>
+                    )}
                 </Box>
 
-                <Box sx={{ display: "flex", gap: 1.5, mb: 2, flexWrap: "wrap" }}>
-                    <Button variant="outlined" onClick={handleSimulate}>
-                        Symuluj alarm (test)
-                    </Button>
-                    <Button variant="contained" color="error" onClick={handleClearAlarm} disabled={!alarmActive}>
-                        Skasuj alarm
-                    </Button>
-                </Box>
+                {SEVERITIES.map(sev => {
+                    const active = alarmActive(sev.key);
+                    const f = fieldName(sev.key);
+                    return (
+                        <Box key={sev.key} sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: "#333", fontWeight: "bold", mb: 1 }}>
+                                {sev.label}
+                            </Typography>
 
-                {alarmStatus && (
-                    <Alert severity={alarmStatus.type} sx={{ mb: 2 }} onClose={() => setAlarmStatus(null)}>
-                        {alarmStatus.message}
-                    </Alert>
-                )}
+                            <Box sx={{
+                                p: 1.5, mb: 1.5, borderRadius: 1.5,
+                                bgcolor: active ? "#fdecea" : "#eaf6ec",
+                                border: active ? "1px solid #e53935" : "1px solid #2e7d32",
+                            }}>
+                                <Typography fontWeight="bold" sx={{ color: active ? "#c62828" : "#2e7d32" }}>
+                                    {active ? "ALARM — przekroczono próg, wymaga skasowania" : "Brak alarmu"}
+                                </Typography>
+                            </Box>
+
+                            <Box sx={{ display: "flex", gap: 1.5, mb: 1.5, flexWrap: "wrap" }}>
+                                <Button size="small" variant="outlined" onClick={() => handleSimulate(sev.key)}>
+                                    Symuluj alarm (test)
+                                </Button>
+                                <Button size="small" variant="contained" color="error"
+                                    onClick={() => handleClearAlarm(sev.key)} disabled={!active}>
+                                    Skasuj alarm
+                                </Button>
+                            </Box>
+
+                            <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
+                                <TextField
+                                    label={`Min (${cfg.unit})`} type="number" size="small"
+                                    value={sev.key === "critical" ? minCritInput : minInput}
+                                    onChange={e => (sev.key === "critical" ? setMinCritInput : setMinInput)(e.target.value)}
+                                    sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
+                                />
+                                <TextField
+                                    label={`Max (${cfg.unit})`} type="number" size="small"
+                                    value={sev.key === "critical" ? maxCritInput : maxInput}
+                                    onChange={e => (sev.key === "critical" ? setMaxCritInput : setMaxInput)(e.target.value)}
+                                    sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
+                                />
+                            </Box>
+                        </Box>
+                    );
+                })}
 
                 <Box sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
                     <Typography variant="subtitle2" sx={{ color: "#333", fontWeight: "bold", mb: 1 }}>
-                        Progi alarmowe ({cfg.unit})
+                        Opóźnienie alarmu
                     </Typography>
                     <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
                         <TextField
-                            label="Min" type="number" size="small" value={minInput}
-                            onChange={e => setMinInput(e.target.value)}
-                            sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
-                        />
-                        <TextField
-                            label="Max" type="number" size="small" value={maxInput}
-                            onChange={e => setMaxInput(e.target.value)}
-                            sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
+                            label="Opóźnienie (s)" type="number" size="small" value={delayInput}
+                            onChange={e => setDelayInput(e.target.value)}
+                            sx={{ width: 140, bgcolor: "white", borderRadius: 1 }}
+                            helperText="Ile sekund odczyt musi być poza progiem zanim alarm się włączy"
                         />
                         <Button variant="contained" size="small" onClick={handleSaveThresholds}>
                             Zapisz progi
@@ -216,6 +364,32 @@ export default function SensorDetail() {
                         </Alert>
                     )}
                 </Box>
+
+                {alarmStatus && (
+                    <Alert severity={alarmStatus.type} sx={{ mb: 2 }} onClose={() => setAlarmStatus(null)}>
+                        {alarmStatus.message}
+                    </Alert>
+                )}
+
+                <Box sx={{ display: "flex", gap: 1, mb: 1.5, flexWrap: "wrap", alignItems: "center" }}>
+                    {RANGE_OPTIONS.map(opt => (
+                        <Button
+                            key={opt.key} size="small"
+                            variant={range === opt.key ? "contained" : "outlined"}
+                            onClick={() => setRange(opt.key)}
+                        >
+                            {opt.label}
+                        </Button>
+                    ))}
+                    <Button size="small" color="error" variant="outlined" sx={{ ml: "auto" }} onClick={handleClearGraph}>
+                        Wyczyść wykres
+                    </Button>
+                </Box>
+                {graphStatus && (
+                    <Alert severity={graphStatus.type} sx={{ mb: 1.5 }} onClose={() => setGraphStatus(null)}>
+                        {graphStatus.message}
+                    </Alert>
+                )}
 
                 <Box sx={{ bgcolor: "#0d1117", border: "3px solid #30363d", borderRadius: 2, p: 2, height: 300 }}>
                     <ResponsiveContainer width="100%" height="100%">
