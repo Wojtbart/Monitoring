@@ -1,0 +1,150 @@
+PRZYDATNE KOMENDY — wdrożenie i utrzymanie Monitoring na Raspberry Pi
+======================================================================
+Pi: user "rpi", IP 192.168.18.125, kod w /home/rpi/Monitoring
+Pełny przewodnik krok-po-kroku: docs/raspberry-pi-deployment.md
+
+----------------------------------------------------------------------
+1. WYSYŁANIE ZMIENIONYCH PLIKÓW Z WINDOWS NA PI (scp)
+----------------------------------------------------------------------
+
+Backend (pojedyncze pliki):
+  scp "C:\Users\Wojtbart\Desktop\projekt_bartek\Monitoring\back\app.py" rpi@192.168.18.125:/home/rpi/Monitoring/back/
+
+Backend (kilka plików naraz):
+  scp "C:\Users\Wojtbart\Desktop\projekt_bartek\Monitoring\back\models.py" "C:\Users\Wojtbart\Desktop\projekt_bartek\Monitoring\back\app.py" "C:\Users\Wojtbart\Desktop\projekt_bartek\Monitoring\back\sensors.py" rpi@192.168.18.125:/home/rpi/Monitoring/back/
+
+Frontend (źródła — potem trzeba zbudować NA Pi, patrz sekcja 4):
+  scp "C:\Users\Wojtbart\Desktop\projekt_bartek\Monitoring\front\src\Settings.jsx" rpi@192.168.18.125:/home/rpi/Monitoring/front/src/
+
+Cały folder na raz (np. przy większych zmianach):
+  scp -r "C:\Users\Wojtbart\Desktop\projekt_bartek\Monitoring\back" rpi@192.168.18.125:/home/rpi/Monitoring/
+
+----------------------------------------------------------------------
+2. RESTART / STATUS BACKENDU (systemd, gunicorn)
+----------------------------------------------------------------------
+
+  sudo systemctl restart monitoring-backend
+  sudo systemctl status monitoring-backend
+  sudo journalctl -u monitoring-backend -f          # logi na żywo (Ctrl+C aby wyjść)
+  sudo systemctl daemon-reload                       # po EDYCJI pliku .service
+
+----------------------------------------------------------------------
+3. NGINX (frontend statyczny)
+----------------------------------------------------------------------
+
+  sudo nano /etc/nginx/sites-available/monitoring    # edycja configu
+  sudo nginx -t                                       # sprawdź składnię PRZED reloadem
+  sudo systemctl reload nginx
+  sudo tail -f /var/log/nginx/error.log               # logi błędów na żywo
+
+Uprawnienia (www-data musi widzieć pliki) — powtarzaj po KAŻDYM npm run build,
+jeśli build nie zachowuje uprawnień:
+  chmod -R o+rX /home/rpi/Monitoring/front/dist
+
+----------------------------------------------------------------------
+4. BUDOWANIE FRONTENDU BEZPOŚREDNIO NA PI (przez VNC/terminal)
+----------------------------------------------------------------------
+
+  cd /home/rpi/Monitoring/front
+  npm run build
+  chmod -R o+rX dist                                  # jeśli nginx dostanie 403/permission denied
+
+Node musi być w wersji 20+ (react-router v7 tego wymaga):
+  node --version
+  # jeśli za stary:
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt install -y nodejs
+
+----------------------------------------------------------------------
+5. BAZA DANYCH (sqlite) — bez CLI sqlite3, przez Pythona
+----------------------------------------------------------------------
+
+Sprawdzenie/dodanie kolumny (przykład — patrz gotcha w CLAUDE.md:
+db.create_all() NIE dodaje kolumn do istniejących tabel):
+  python3 -c "
+import sqlite3
+conn = sqlite3.connect('/home/rpi/Monitoring/back/instance/monitoring.db')
+conn.execute('ALTER TABLE voltage_thresholds ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1;')
+conn.commit()
+conn.close()
+print('OK')
+"
+
+Opcjonalnie zainstaluj normalny CLI:
+  sudo apt install -y sqlite3
+  sqlite3 /home/rpi/Monitoring/back/instance/monitoring.db ".tables"
+
+----------------------------------------------------------------------
+6. GPIO — weryfikacja pinów fizycznym testem (NIE ufaj samemu odczytowi)
+----------------------------------------------------------------------
+
+  pinctrl get 6            # np. czujnik drzwi — otwórz/zamknij drzwi i porównaj
+  pinctrl get 17            # DHT22
+  pinctrl get 22            # PIR ruchu — pomachaj ręką
+  pinctrl get 23            # woda — zwilż płytkę
+  pinctrl get 24            # płomień/IR — obróć potencjometr na płytce
+  pinctrl get 27            # gaz/dym MQ-2 — obróć potencjometr na płytce
+
+Szybki test DHT22 bez uruchamiania całej apki:
+  python3 -c "
+import board, adafruit_dht, time
+sensor = adafruit_dht.DHT22(board.D17)
+for _ in range(6):
+    try:
+        print('temp:', sensor.temperature, 'hum:', sensor.humidity)
+    except RuntimeError as e:
+        print('retry:', e)
+    time.sleep(2)
+"
+
+Szybki test modułu SIM800L (GSM):
+  python3 -c "
+import serial, time
+s = serial.Serial('/dev/serial0', 9600, timeout=2)
+time.sleep(1)
+s.write(b'AT\r\n')
+time.sleep(1)
+print(s.read(s.in_waiting or 1))
+"
+# powinno zwrócić coś zawierające OK
+
+----------------------------------------------------------------------
+7. PING (uprawnienia raw socket)
+----------------------------------------------------------------------
+
+Jeśli /ping/<adres> rzuca "Operation not permitted" — python w venv
+potrzebuje CAP_NET_RAW (ustaw na REALNYM binarce, nie na symlinku):
+  readlink -f /home/rpi/Monitoring/back/venv/bin/python3.11
+  sudo setcap cap_net_raw+ep /usr/bin/python3.11
+  sudo systemctl restart monitoring-backend
+Uwaga: to jest przypięte do KONKRETNEGO pliku — po przebudowaniu venv
+od zera trzeba ustawić ponownie.
+
+----------------------------------------------------------------------
+8. KAMERA / WIDEO
+----------------------------------------------------------------------
+
+Sprawdź kodek nagranego pliku (powinno być h264, nie mpeg4/mp4v):
+  ffprobe /home/rpi/Monitoring/back/videos/<plik>.mp4
+
+Test wykrycia kamery CSI:
+  rpicam-hello --list-cameras
+
+----------------------------------------------------------------------
+9. TYPOWE PROBLEMY — SKRÓT (pełen opis root-cause w docs/raspberry-pi-deployment.md)
+----------------------------------------------------------------------
+
+- 500 z nginx                    -> permission denied w error.log -> chmod o+x na
+                                     łańcuchu katalogów + chmod -R o+rX na dist
+- SIGSEGV workera przy nagrywaniu -> picamera2/libcamera nie jest thread-safe,
+                                     wymaga -k gthread + lock w Camera (już naprawione w kodzie)
+- Video nie odtwarza się w przeglądarce -> kodek mpeg4 zamiast h264 -> ffmpeg
+                                     transkoduje automatycznie po nagraniu (już w kodzie)
+- Po npm run build strona nie ładuje JS
+  (Failed to load module script, MIME text/html) -> przeglądarka ma w cache
+  stary index.html wskazujący na nieistniejący już plik JS (hash się zmienia
+  przy każdym buildzie) -> hard refresh / incognito; na stałe: nginx
+  "location = /index.html { add_header Cache-Control "no-cache"; }"
+- real-time-data zwraca 0.0 mimo ustawionego <X>_BACKEND w .env -> stałe
+  modułowe w sensors.py czytane PRZED load_dotenv() w app.py -> backend env
+  musi być czytany w Sensor.__init__, nie na poziomie modułu (już naprawione)
