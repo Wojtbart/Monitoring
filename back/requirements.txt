@@ -12,10 +12,19 @@ opencv-python-headless>=4.9.0
 # Network tools
 pythonping>=1.1.4
 
-# RPi hardware (odkomentuj na Raspberry Pi)
+# GSM (SIM800L przez UART) — czysty pip, działa też na Windows (nieużywany tam)
+pyserial>=3.5
+
+# DHT11/DHT22 (temperatura/wilgotność) — czysty pip, instaluje się normalnie
+# nawet w venv z --system-site-packages (sprawdzone). Nieużywany na Windows.
+adafruit-circuitpython-dht>=4.0.0
+
+# RPi hardware — NIE instaluj przez zwykłe `pip install` w izolowanym venv.
+# Te pakiety potrzebują systemowych bindingów C (libcamera/libgpiod), których
+# czysty pip w odizolowanym venv nie dostarczy. Instalacja: patrz
+# docs/raspberry-pi-deployment.md (apt install + venv --system-site-packages).
 # RPi.GPIO>=0.7.1
 # picamera2>=0.3.19
-# adafruit-circuitpython-dht>=4.0.0
 
 # Testy (dev)
 pytest>=8.0.0

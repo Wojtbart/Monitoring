@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
-import { Box, Typography, IconButton, Chip, TextField, Button, Alert } from "@mui/material";
+import { Box, Typography, IconButton, Chip, TextField, Button, Alert, Switch, FormControlLabel } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ThermostatIcon from "@mui/icons-material/Thermostat";
 import WaterDropIcon from "@mui/icons-material/WaterDrop";
@@ -80,7 +80,7 @@ export default function SensorDetail() {
     };
 
     useEffect(() => {
-        if (!current) return;
+        if (!current || current.enabled === false) return;
         const nc = fieldName("non_critical");
         const cr = fieldName("critical");
         setMinInput(String(current[nc.min]));
@@ -198,6 +198,22 @@ export default function SensorDetail() {
 
     const alarmActive = (severity) => current ? current[`alarm_active_${type}_${severity}`] : false;
 
+    const handleToggleEnabled = async (event) => {
+        const next = event.target.checked;
+        try {
+            await axios.put(
+                `${API_BASE}/device-sensor-settings`,
+                { enabled: next },
+                { headers: { Authorization: `Bearer ${accessToken}` } },
+            );
+            const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}/${unit}`);
+            setCurrent(data);
+        } catch (error) {
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd zapisu." });
+            setTimeout(() => setAlarmStatus(null), 2500);
+        }
+    };
+
     const handleSimulate = async (severity) => {
         try {
             await axios.post(`${API_BASE}/device-sensors/${rackId}/${unit}/${type}/${severity}/simulate`, {}, {
@@ -240,6 +256,18 @@ export default function SensorDetail() {
                     </Box>
                 </Box>
 
+                <FormControlLabel
+                    sx={{ mb: 2 }}
+                    control={<Switch checked={current?.enabled !== false} onChange={handleToggleEnabled} />}
+                    label="Czujnik podłączony"
+                />
+
+                {current?.enabled === false ? (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                        Czujnik nie jest podłączony. Włącz powyżej, gdy podłączysz realny czujnik.
+                    </Alert>
+                ) : (
+                <>
                 <Box sx={{
                     display: "flex", alignItems: "center", gap: 2, p: 2, mb: 2,
                     bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5,
@@ -407,6 +435,8 @@ export default function SensorDetail() {
                         </LineChart>
                     </ResponsiveContainer>
                 </Box>
+                </>
+                )}
             </Box>
         </Layout>
     );

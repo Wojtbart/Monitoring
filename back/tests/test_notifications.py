@@ -63,8 +63,22 @@ def test_send_email_with_attachment_sends_multipart(app):
             assert 'Content-Type: image/jpeg' in args[2] or 'image' in args[2].lower()
 
 
-def test_send_sms_logs_mock(capsys):
+def test_send_sms_logs_mock(capsys, monkeypatch):
+    monkeypatch.delenv('SMS_BACKEND', raising=False)
     notifications.send_sms(['+48123456789'], 'Test message')
     captured = capsys.readouterr()
     assert '+48123456789' in captured.out
-    assert 'Test message' in captured.out
+
+
+def test_send_sms_skips_when_no_recipients():
+    with patch('sim800.send_sms_sim800') as mock_sim800:
+        notifications.send_sms([], 'Test message')
+        mock_sim800.assert_not_called()
+
+
+def test_send_sms_uses_sim800_backend_when_configured(monkeypatch):
+    monkeypatch.setenv('SMS_BACKEND', 'sim800')
+    calls = []
+    monkeypatch.setattr('sim800.send_sms_sim800', lambda numbers, msg: calls.append((numbers, msg)))
+    notifications.send_sms(['+48123456789'], 'Test message')
+    assert calls == [(['+48123456789'], 'Test message')]

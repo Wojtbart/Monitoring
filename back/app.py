@@ -2,7 +2,7 @@ import os
 from flask import Flask, Response, request, jsonify, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
-from models import db, User, Setting, Log, Layout, DeviceSensor, DeviceSensorHistory, EmailGroup, EmailRecipient, SmsGroup, SmsRecipient, NotificationRule, NOTIFICATION_EVENT_TYPES, AlarmState, ALARM_EVENT_TYPES, DeviceAlarmState, VoltageThreshold, alarm_should_fire, is_within_schedule, SmtpSettings, DEFAULT_SCHEDULE
+from models import db, User, Setting, Log, Layout, DeviceSensor, DeviceSensorHistory, EmailGroup, EmailRecipient, SmsGroup, SmsRecipient, NotificationRule, NOTIFICATION_EVENT_TYPES, AlarmState, ALARM_EVENT_TYPES, DeviceAlarmState, VoltageThreshold, DeviceSensorSettings, alarm_should_fire, is_within_schedule, SmtpSettings, DEFAULT_SCHEDULE
 from pythonping import ping
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -415,8 +415,6 @@ def save_settings():
     ok = Setting.update_settings(
         data.get('id'),
         data.get('recording_seconds'),
-        data.get('evening_test_time'),
-        data.get('morning_test_time'),
     )
     if ok:
         sensor.update_settings(Setting.get_all_settings())
@@ -427,7 +425,23 @@ def save_settings():
 @app.route('/voltage-threshold', methods=['GET'])
 def get_voltage_threshold():
     threshold = VoltageThreshold.get_or_create()
-    return jsonify({'min_voltage': threshold.min_voltage, 'max_voltage': threshold.max_voltage}), 200
+    return jsonify({
+        'min_voltage': threshold.min_voltage,
+        'max_voltage': threshold.max_voltage,
+        'enabled': threshold.enabled,
+    }), 200
+
+
+@app.route('/voltage-enabled', methods=['PUT'])
+@jwt_required()
+def save_voltage_enabled():
+    data = request.get_json()
+    enabled = data.get('enabled')
+    if not isinstance(enabled, bool):
+        return jsonify({'message': 'Brak danych'}), 400
+    threshold = VoltageThreshold.set_enabled(enabled)
+    sensor.update_voltage_enabled(enabled)
+    return jsonify({'enabled': threshold.enabled}), 200
 
 
 @app.route('/voltage-threshold', methods=['PUT'])
@@ -650,11 +664,37 @@ def _check_device_thresholds(rack_id, unit, device):
         _check_device_metric_severity(rack_id, unit, metric, severity, value, min_v, max_v, device.alert_delay_seconds)
 
 
+@app.route('/device-sensor-settings', methods=['GET'])
+def get_device_sensor_settings():
+    settings = DeviceSensorSettings.get_or_create()
+    return jsonify({'enabled': settings.enabled}), 200
+
+
+@app.route('/device-sensor-settings', methods=['PUT'])
+@jwt_required()
+def save_device_sensor_settings():
+    data = request.get_json()
+    enabled = data.get('enabled')
+    if not isinstance(enabled, bool):
+        return jsonify({'message': 'Brak danych'}), 400
+    settings = DeviceSensorSettings.set_enabled(enabled)
+    return jsonify({'enabled': settings.enabled}), 200
+
+
 @app.route('/device-sensors/<rack_id>/<int:unit>', methods=['GET'])
 def get_device_sensors(rack_id, unit):
+    if not DeviceSensorSettings.get_or_create().enabled:
+        device = DeviceSensor.get_existing(rack_id, unit)
+        if device is None:
+            return jsonify({'enabled': False}), 200
+        result = _device_sensor_dict(rack_id, unit, device)
+        result['enabled'] = False
+        return jsonify(result), 200
     device = DeviceSensor.get_or_create_reading(rack_id, unit)
     _check_device_thresholds(rack_id, unit, device)
-    return jsonify(_device_sensor_dict(rack_id, unit, device)), 200
+    result = _device_sensor_dict(rack_id, unit, device)
+    result['enabled'] = True
+    return jsonify(result), 200
 
 
 @app.route('/device-sensors/<rack_id>/<int:unit>/<metric>/<severity>/simulate', methods=['POST'])
@@ -756,7 +796,10 @@ def clear_device_sensor_records(rack_id, unit):
 @app.route('/ping/<path:address>', methods=['GET'])
 @jwt_required()
 def ping_host(address):
-    response = ping(address, count=4)
+    try:
+        response = ping(address, count=4)
+    except RuntimeError:
+        return jsonify({'message': f'Nie można rozwiązać adresu "{address}" — sprawdź czy IP/hostname jest poprawny'}), 400
     messages = [str(r).split('\r')[0] for r in response]
     return jsonify({'messages': messages}), 200
 
@@ -867,7 +910,7 @@ def _restore_settings(rows):
     row = rows[0]
     existing = Setting.query.first()
     if existing:
-        Setting.update_settings(existing.id, row['recording_seconds'], row['evening_test_time'], row['morning_test_time'])
+        Setting.update_settings(existing.id, row['recording_seconds'])
 
 
 def _restore_smtp(data):

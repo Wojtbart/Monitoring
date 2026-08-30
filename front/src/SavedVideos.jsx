@@ -87,6 +87,20 @@ const SavedVideos = () => {
         fetchVideos();
     }, []);
 
+    const handleDownloadVideo = async (video) => {
+        try {
+            const { data } = await axios.get(video.url, { responseType: "blob" });
+            const blobUrl = URL.createObjectURL(data);
+            const link = document.createElement("a");
+            link.href = blobUrl;
+            link.download = video.name;
+            link.click();
+            URL.revokeObjectURL(blobUrl);
+        } catch (err) {
+            console.error("Błąd pobierania wideo:", err);
+        }
+    };
+
     const handleDeleteVideo = async (name) => {
         if (!window.confirm(`Usunąć nagranie "${name}"?`)) return;
         try {
@@ -239,7 +253,7 @@ const SavedVideos = () => {
                                             </IconButton>
 
                                             <IconButton size="small" title="Pobierz"
-                                                component="a" href={v.url} download={v.name}
+                                                onClick={() => handleDownloadVideo(v)}
                                                 sx={{
                                                     color: "#8b949e", bgcolor: "#161b22",
                                                     "&:hover": { bgcolor: "#238636", color: "#fff" },

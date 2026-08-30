@@ -22,8 +22,8 @@ const Home = () => {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             setPingResponses(res.data.messages || []);
-        } catch (_) {
-            setPingResponses(["Błąd połączenia"]);
+        } catch (error) {
+            setPingResponses([error.response?.data?.message || "Błąd połączenia"]);
         }
         setPinging(false);
     };

@@ -1,10 +1,8 @@
+import os
 import threading
 import random
 import time
 from datetime import datetime
-# import RPi.GPIO as GPIO
-# import adafruit_dht
-# import board
 
 LOG_COOLDOWN_SECONDS = 60  # ten sam alert max raz na minutę
 
@@ -31,10 +29,50 @@ class Sensor:
         self.start_time = time.time()
         self._last_log: dict[str, float] = {}
 
-        # GPIO.setmode(GPIO.BCM)
-        # self.motion_pin = 18
-        # GPIO.setup(self.motion_pin, GPIO.IN)
-        # self.dht = adafruit_dht.DHT22(board.D4)
+        # Odczytywane dopiero tutaj (nie na poziomie modułu) celowo: sensors.py
+        # jest importowany w app.py PRZED load_dotenv(), więc stałe modułowe
+        # czytane przy imporcie zawsze widziałyby wartości domyślne. Sensor()
+        # jest tworzony dopiero w init_sensor(), już po load_dotenv().
+        dht_backend = os.getenv('DHT_BACKEND', 'mock')
+        self._dht_reader = None
+        if dht_backend in ('dht11', 'dht22'):
+            from dht_sensor import DhtReader
+            self._dht_reader = DhtReader(dht_backend)
+
+        door_backend = os.getenv('DOOR_BACKEND', 'mock')
+        self._door_reader = None
+        if door_backend == 'gpio':
+            from gpio_sensor import DigitalInputReader
+            door_pin = int(os.getenv('DOOR_PIN', 6))
+            self._door_reader = DigitalInputReader(door_pin, pull_up=True)
+
+        water_backend = os.getenv('WATER_BACKEND', 'mock')
+        self._water_reader = None
+        if water_backend == 'gpio':
+            from gpio_sensor import DigitalInputReader
+            water_pin = int(os.getenv('WATER_PIN', 23))
+            self._water_reader = DigitalInputReader(water_pin, pull_up=False)
+
+        motion_backend = os.getenv('MOTION_BACKEND', 'mock')
+        self._motion_reader = None
+        if motion_backend == 'gpio':
+            from gpio_sensor import DigitalInputReader
+            motion_pin = int(os.getenv('MOTION_PIN', 22))
+            self._motion_reader = DigitalInputReader(motion_pin, pull_up=False)
+
+        gas_backend = os.getenv('GAS_BACKEND', 'mock')
+        self._gas_reader = None
+        if gas_backend == 'gpio':
+            from gpio_sensor import DigitalInputReader
+            gas_pin = int(os.getenv('GAS_PIN', 27))
+            self._gas_reader = DigitalInputReader(gas_pin, pull_up=False)
+
+        fire_backend = os.getenv('FIRE_BACKEND', 'mock')
+        self._fire_reader = None
+        if fire_backend == 'gpio':
+            from gpio_sensor import DigitalInputReader
+            fire_pin = int(os.getenv('FIRE_PIN', 24))
+            self._fire_reader = DigitalInputReader(fire_pin, pull_up=False)
 
         self.handling_thread = threading.Thread(target=self._read_loop, daemon=True)
         self.handling_thread.start()
@@ -42,8 +80,6 @@ class Sensor:
     def _apply_settings(self, settings):
         s = settings[0] if settings else {}
         self.recording_seconds = s.get('recording_seconds', 30)
-        self.evening_test_time = s.get('evening_test_time', '20:00:00')
-        self.morning_test_time = s.get('morning_test_time', '08:00:00')
 
     def update_settings(self, settings):
         self._apply_settings(settings)
@@ -54,10 +90,14 @@ class Sensor:
             threshold = VoltageThreshold.get_or_create()
             self.min_voltage = threshold.min_voltage
             self.max_voltage = threshold.max_voltage
+            self.voltage_enabled = threshold.enabled
 
     def update_voltage_threshold(self, min_voltage, max_voltage):
         self.min_voltage = min_voltage
         self.max_voltage = max_voltage
+
+    def update_voltage_enabled(self, enabled):
+        self.voltage_enabled = enabled
 
     def get_current_data(self):
         return {
@@ -124,26 +164,63 @@ class Sensor:
     def _read_sensors(self):
         """Odczyt z hardware. Zastąp mockowane wartości prawdziwymi na RPi."""
         # --- Mock (dev) ---
-        self.temperature = random.randint(20, 32)   # w normie, sporadycznie poza
-        self.humidity = random.randint(35, 75)       # w normie
         self.voltage = round(random.uniform(11.5, 14.5), 1)  # napięcie zasilania, w normie
-        self.motion = False                          # brak podłączonego czujnika PIR — mock wyłączony
-        self.fire  = random.random() < 0.01          # 1% szansa
-        self.gas   = random.random() < 0.01          # 1% szansa
-        self.door  = random.random() < 0.05          # 5% szansa
-        self.water = random.random() < 0.01          # 1% szansa
+        if not self._motion_reader:
+            self.motion = False                        # brak podłączonego czujnika PIR — mock wyłączony
+        if not self._fire_reader:
+            self.fire = random.random() < 0.01          # mock: 1% szansa
+        if not self._gas_reader:
+            self.gas = random.random() < 0.01          # mock: 1% szansa
+        if not self._door_reader:
+            self.door = random.random() < 0.05        # mock: 5% szansa
+        if not self._water_reader:
+            self.water = random.random() < 0.01        # mock: 1% szansa
 
-        # --- RPi GPIO (odkomentuj na Raspberry Pi) ---
-        # try:
-        #     self.temperature = self.dht.temperature
-        #     self.humidity = self.dht.humidity
-        # except Exception:
-        #     pass
-        # self.motion = GPIO.input(self.motion_pin)
-        # self.fire   = GPIO.input(FIRE_PIN)
-        # self.gas    = GPIO.input(GAS_PIN)
-        # self.door   = GPIO.input(DOOR_PIN)
-        # self.water  = GPIO.input(WATER_PIN)
+        # temperature/humidity: DHT_BACKEND=dht11/dht22 w .env włącza realny odczyt
+        # (patrz dht_sensor.py); None (błąd odczytu — normalne dla DHT) zostawia
+        # poprzednią wartość zamiast ją zerować. Przy mock (domyślnie) zostają 0.0.
+        if self._dht_reader:
+            temp, hum = self._dht_reader.read()
+            if temp is not None:
+                self.temperature = temp
+            if hum is not None:
+                self.humidity = hum
+
+        # drzwi: DOOR_BACKEND=gpio w .env włącza realny odczyt kontaktronu
+        # (patrz gpio_sensor.py) — HIGH = otwarte, LOW = zamknięte. None (błąd
+        # odczytu) zostawia poprzednią wartość.
+        if self._door_reader:
+            high = self._door_reader.read_high()
+            if high is not None:
+                self.door = high
+
+        # woda: WATER_BACKEND=gpio w .env włącza realny odczyt czujnika deszczu/wody
+        # (HL-83 i podobne) — LOW = mokro (odwrotna polaryzacja niż drzwi), HIGH = sucho.
+        if self._water_reader:
+            high = self._water_reader.read_high()
+            if high is not None:
+                self.water = not high
+
+        # ruch: MOTION_BACKEND=gpio w .env włącza realny odczyt PIR (HC-SR501) —
+        # HIGH = wykryto ruch, LOW = brak ruchu.
+        if self._motion_reader:
+            high = self._motion_reader.read_high()
+            if high is not None:
+                self.motion = high
+
+        # gaz/dym: GAS_BACKEND=gpio w .env włącza realny odczyt MQ-2 —
+        # LOW = wykryto gaz (odwrotna polaryzacja jak woda), HIGH = czyste powietrze.
+        if self._gas_reader:
+            high = self._gas_reader.read_high()
+            if high is not None:
+                self.gas = not high
+
+        # płomień: FIRE_BACKEND=gpio w .env włącza realny odczyt (TCRT5000/podobny) —
+        # LOW = wykryto, HIGH = normalnie (taka sama polaryzacja jak gaz/woda).
+        if self._fire_reader:
+            high = self._fire_reader.read_high()
+            if high is not None:
+                self.fire = not high
 
     def _handle_recording(self):
         if self.motion and not self.is_recording and not self.is_user_recording:
@@ -171,7 +248,6 @@ class Sensor:
             self._read_sensors()
             self._check_thresholds()
             self._handle_recording()
-            self._check_test_times()
             time.sleep(1)
 
     def _check_thresholds(self):
@@ -183,12 +259,6 @@ class Sensor:
             self._raise_alert('water', 'Czujnik wody', True, 'Wykryto wodę!')
         if self.door:
             self._raise_alert('door', 'Czujnik drzwi', False, 'Otwarto drzwi')
-        if self.voltage < self.min_voltage or self.voltage > self.max_voltage:
+        if self.voltage_enabled and (self.voltage < self.min_voltage or self.voltage > self.max_voltage):
             self._raise_alert('voltage', 'Napięcie zasilania', True,
                                f'Napięcie poza normą: {self.voltage}V (próg {self.min_voltage}-{self.max_voltage}V)')
-
-    def _check_test_times(self):
-        current_time = time.strftime('%H:%M:%S', time.localtime())
-        if current_time in (self.morning_test_time, self.evening_test_time):
-            print(f'[sensor] Test systemowy o {current_time}')
-            self._log('System', False, f'Test systemowy o {current_time}')

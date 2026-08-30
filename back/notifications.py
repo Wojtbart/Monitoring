@@ -1,3 +1,4 @@
+import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -40,6 +41,12 @@ def send_email(to_addresses, subject, body, attachment_bytes=None, attachment_fi
 
 
 def send_sms(to_numbers, message):
-    """Zamockowane — brak konta u dostawcy SMS. Podłącz realne API tutaj."""
+    if not to_numbers:
+        return
+    backend = os.getenv('SMS_BACKEND', 'mock')
+    if backend == 'sim800':
+        from sim800 import send_sms_sim800
+        send_sms_sim800(to_numbers, message)
+        return
     for number in to_numbers:
         print(f'[notifications] (mock SMS) do {number}: {message}')

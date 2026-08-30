@@ -92,6 +92,13 @@ const SENSOR_TYPE_MOUNT = {
 // Czujniki podłogowe (zalanie) zawsze stoją na podłodze — pion ignorowany.
 const effectiveSensorWy = def => def.floor ? 0.05 : (def.wy ?? ROOM.H - 0.02);
 
+// Regulacja wysokości po zaznaczeniu (klik) — osobno od przeciągania
+// (X/głębokość), żeby mysz o 2 wymiarach nie musiała sterować 3 naraz.
+const HEIGHT_STEP = 0.15;
+const MIN_WY = 0.15;
+const MAX_WY = ROOM.H - 0.05;
+const CLICK_MOVE_THRESHOLD = 4; // px ekranu — powyżej tego to już drag, nie klik
+
 // ─── RackBox ──────────────────────────────────────────────────────────────────
 function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, active, onTogglePower }) {
     const [hover, setHover] = useState(false);
@@ -207,7 +214,7 @@ function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, acti
 }
 
 // ─── Sensor (domyślny lub dodany, oba przeciągalne) ────────────────────────────
-function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick }) {
+function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick, selected, onRaise, onLower }) {
     const wy = effectiveSensorWy(def);
     const sp = proj(def.wx, wy, def.wz);
     const color = alert ? C.sensorE : C.sensorOk;
@@ -215,6 +222,7 @@ function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick
     const hasLine = def.wy === undefined;
     const lineEndY = def.floor ? sp.y - 6 : sp.y + 6;
     const labelY = def.floor ? sp.y - R - 10 : sp.y + R + 2;
+    const canAdjustHeight = !def.floor;
     return (
         <Group
             onMouseDown={e => { e.cancelBubble = true; onDragStart && onDragStart(e); }}
@@ -231,6 +239,9 @@ function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick
                     stroke={color} strokeWidth={0.8} dash={[2, 2]} />
             )}
             {alert && <Circle x={sp.x} y={sp.y} radius={R + 4} fill={color} opacity={0.2} />}
+            {selected && (
+                <Circle x={sp.x} y={sp.y} radius={R + 2.5} stroke="#58a6ff" strokeWidth={1} dash={[1.5, 1.5]} />
+            )}
             <Circle x={sp.x} y={sp.y} radius={R}
                 fill={C.sensorBg} stroke={color} strokeWidth={1.2}
                 shadowColor={color} shadowBlur={alert ? 8 : 3} shadowOpacity={0.7} />
@@ -240,6 +251,28 @@ function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick
                 <Text text={def.label} x={sp.x - 20} y={labelY}
                     width={40} align="center" fontSize={5}
                     fill={color} fontStyle="bold" />
+            )}
+            {selected && canAdjustHeight && (
+                <Group x={sp.x + R + 5} y={sp.y}>
+                    <Group
+                        onMouseDown={e => { e.cancelBubble = true; }}
+                        onClick={e => { e.cancelBubble = true; onRaise && onRaise(); }}
+                        onMouseEnter={e => { e.target.getStage().container().style.cursor = "pointer"; }}
+                        onMouseLeave={e => { e.target.getStage().container().style.cursor = "grab"; }}
+                    >
+                        <Circle x={0} y={-7} radius={6} fill="#1a1a2e" stroke="#58a6ff" strokeWidth={1} />
+                        <Text text="▲" x={-6} y={-11} width={12} align="center" fontSize={7} fill="#58a6ff" />
+                    </Group>
+                    <Group
+                        onMouseDown={e => { e.cancelBubble = true; }}
+                        onClick={e => { e.cancelBubble = true; onLower && onLower(); }}
+                        onMouseEnter={e => { e.target.getStage().container().style.cursor = "pointer"; }}
+                        onMouseLeave={e => { e.target.getStage().container().style.cursor = "grab"; }}
+                    >
+                        <Circle x={0} y={7} radius={6} fill="#1a1a2e" stroke="#58a6ff" strokeWidth={1} />
+                        <Text text="▼" x={-6} y={3} width={12} align="center" fontSize={7} fill="#58a6ff" />
+                    </Group>
+                </Group>
             )}
         </Group>
     );
@@ -266,6 +299,7 @@ export default function FloorPlan() {
         Object.fromEntries(ALL_RACKS.map(r => [r.id, true]))
     );
     const [customSensors, setCustomSensors] = useState([]);
+    const [selectedSensorId, setSelectedSensorId] = useState(null);
     const [saving, setSaving]   = useState(false);
     const [savedAt, setSavedAt] = useState(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -273,9 +307,14 @@ export default function FloorPlan() {
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
-        const ro = new ResizeObserver(() =>
-            setStageSize({ w: el.offsetWidth, h: el.offsetHeight })
-        );
+        const ro = new ResizeObserver(() => {
+            const w = el.offsetWidth, h = el.offsetHeight;
+            // Kontener bywa chwilowo 0x0 podczas przejścia SPA między trasami
+            // (zanim layout się ustabilizuje) — Stage z width/height=0 wysadza
+            // Konva przy drawImage na zerowym canvasie. Ignoruj taki odczyt,
+            // zostań przy poprzednim (poprawnym) rozmiarze.
+            if (w > 0 && h > 0) setStageSize({ w, h });
+        });
         ro.observe(el);
         return () => ro.disconnect();
     }, []);
@@ -401,7 +440,10 @@ export default function FloorPlan() {
     // dzięki temu można go swobodnie przesuwać po całym pokoju (X i
     // głębokość naraz), nie tylko wzdłuż jednej zamrożonej linii głębokości.
     const handleSensorDragStart = (e, sensor) => {
-        dragRef.current = { kind: "sensor", id: sensor.id, planeWy: effectiveSensorWy(sensor) };
+        dragRef.current = {
+            kind: "sensor", id: sensor.id, planeWy: effectiveSensorWy(sensor),
+            moved: false, startClientX: e.evt.clientX, startClientY: e.evt.clientY,
+        };
         setIsDragging(true);
     };
 
@@ -418,14 +460,34 @@ export default function FloorPlan() {
             const newCx = Math.max(-ROOM.W / 2 + RACK_W, Math.min(ROOM.W / 2 - RACK_W, startWorldX + dx));
             setRackXPos(prev => ({ ...prev, [id]: newCx }));
         } else {
-            const { planeWy } = dragRef.current;
+            const { planeWy, startClientX, startClientY } = dragRef.current;
+            const moveDist = Math.hypot(e.evt.clientX - startClientX, e.evt.clientY - startClientY);
+            if (moveDist > CLICK_MOVE_THRESHOLD) dragRef.current.moved = true;
             const { wx: rawWx, wz } = stageToWorldOnPlane(stageX, stageY, planeWy);
             const newWx = Math.max(-ROOM.W / 2 + 0.02, Math.min(ROOM.W / 2 - 0.02, rawWx));
             setCustomSensors(prev => prev.map(s => s.id === id ? { ...s, wx: newWx, wz } : s));
         }
     };
 
-    const handleMouseUp = () => { dragRef.current = null; setIsDragging(false); };
+    const handleMouseUp = () => {
+        if (dragRef.current?.kind === "sensor" && !dragRef.current.moved) {
+            // Klik bez przeciągnięcia — zaznacz/odznacz czujnik (regulacja
+            // wysokości strzałkami ▲▼), nie licz tego jako zmianę pozycji.
+            const id = dragRef.current.id;
+            setSelectedSensorId(prev => prev === id ? null : id);
+        }
+        dragRef.current = null;
+        setIsDragging(false);
+    };
+
+    const adjustSensorHeight = (id, delta) => {
+        setCustomSensors(prev => prev.map(s => {
+            if (s.id !== id || s.floor) return s;
+            const current = effectiveSensorWy(s);
+            const next = Math.max(MIN_WY, Math.min(MAX_WY, current + delta));
+            return { ...s, wy: next };
+        }));
+    };
 
     const toggleRackPower = id => setRackActive(prev => ({ ...prev, [id]: !prev[id] }));
 
@@ -583,6 +645,7 @@ export default function FloorPlan() {
                         </Box>
                         <Box sx={{ flex: 1 }} />
                         <Chip size="small" variant="outlined" label="🖱️ Przeciągnij = przesuń" />
+                        <Chip size="small" variant="outlined" label="Klik czujnik = wysokość ▲▼" />
                         <Chip size="small" variant="outlined" label="2×klik szafa = edycja" />
                         <Chip size="small" variant="outlined" label="PPM czujnik = usuń" />
                     </Box>
@@ -592,6 +655,7 @@ export default function FloorPlan() {
                 <Box ref={containerRef} sx={{ flex: 1, overflow: "hidden", bgcolor: C.bg }}>
                     <Stage ref={stageRef} width={W} height={H}
                         x={fixX} y={fixY} scaleX={fixedScale} scaleY={fixedScale}
+                        onMouseDown={e => { if (e.target === e.target.getStage()) setSelectedSensorId(null); }}
                         onMouseMove={handleMouseMove}
                         onMouseUp={handleMouseUp}
                         onMouseLeave={handleMouseUp}>
@@ -654,7 +718,10 @@ export default function FloorPlan() {
                                 <Sensor key={s.id} def={s} proj={proj} alert={getAlert(s.type)}
                                     onDragStart={e => handleSensorDragStart(e, s)}
                                     onDblClick={() => s.type === "motion" ? navigate("/settings#powiadomienia") : navigate("/room-sensor/" + s.type)}
-                                    deletable onDelete={deleteCustomSensor} />
+                                    deletable onDelete={deleteCustomSensor}
+                                    selected={selectedSensorId === s.id}
+                                    onRaise={() => adjustSensorHeight(s.id, HEIGHT_STEP)}
+                                    onLower={() => adjustSensorHeight(s.id, -HEIGHT_STEP)} />
                             ))}
 
                             {/* Door sensor circle */}

@@ -28,24 +28,25 @@ def _seed_settings(app):
         return setting.id
 
 
-def test_update_settings_accepts_time_strings(client, app):
+def test_get_settings_does_not_expose_test_times(client, app):
+    _seed_settings(app)
+    settings = client.get('/settings').get_json()['settings'][0]
+    assert 'morning_test_time' not in settings
+    assert 'evening_test_time' not in settings
+    assert settings['recording_seconds'] == 30
+
+
+def test_update_settings_updates_recording_seconds_only(client, app):
     settings_id = _seed_settings(app)
     token = _login(client, app)
     app_module.sensor = _FakeSensor()
 
     resp = client.put(
         '/settings',
-        json={
-            'id': settings_id,
-            'recording_seconds': 45,
-            'morning_test_time': '07:30:00',
-            'evening_test_time': '21:15:00',
-        },
+        json={'id': settings_id, 'recording_seconds': 45},
         headers={'Authorization': f'Bearer {token}'},
     )
     assert resp.status_code == 200
 
     updated = client.get('/settings').get_json()['settings'][0]
     assert updated['recording_seconds'] == 45
-    assert updated['morning_test_time'] == '07:30:00'
-    assert updated['evening_test_time'] == '21:15:00'

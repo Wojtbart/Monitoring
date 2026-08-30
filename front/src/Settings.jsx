@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { API_BASE } from "./api";
-import dayjs from "dayjs";
 import { useNavigate, useLocation } from "react-router-dom";
 import Layout from "./Layout";
 
@@ -22,9 +21,6 @@ import {
     AccordionSummary,
     AccordionDetails,
 } from "@mui/material";
-import { TimePicker } from "@mui/x-date-pickers/TimePicker";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import Card from "@mui/material/Card";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
@@ -137,8 +133,6 @@ const Settings = () => {
 
     const [id, setId] = useState(null);
     const [recordingSeconds, setRecordingSeconds] = useState("");
-    const [morningTime, setMorningTime] = useState(dayjs().hour(8).minute(0));
-    const [eveningTime, setEveningTime] = useState(dayjs().hour(20).minute(0));
     const [isLoading, setIsLoading] = useState(true);
     const [settingsStatus, setSettingsStatus] = useState(null);
 
@@ -197,8 +191,6 @@ const Settings = () => {
                 const settings = data.settings[0];
                 setId(settings.id);
                 setRecordingSeconds(String(settings.recording_seconds));
-                setMorningTime(dayjs(settings.morning_test_time, "HH:mm:ss"));
-                setEveningTime(dayjs(settings.evening_test_time, "HH:mm:ss"));
             } catch (error) {
                 console.error("Błąd pobierania ustawień:", error);
             }
@@ -257,8 +249,6 @@ const Settings = () => {
                 {
                     id,
                     recording_seconds: Number(recordingSeconds),
-                    morning_test_time: dayjs(morningTime).format("HH:mm:ss"),
-                    evening_test_time: dayjs(eveningTime).format("HH:mm:ss"),
                 },
                 { headers: { Authorization: `Bearer ${accessToken}` } },
             );
@@ -536,7 +526,7 @@ const Settings = () => {
                     </Grid>
                 </SectionCard>
 
-                <SectionCard icon={<AccessTimeIcon />} title="Ustawienia nagrywania i testów">
+                <SectionCard icon={<AccessTimeIcon />} title="Ustawienia nagrywania">
                     {isLoading ? (
                         <Typography color="text.secondary">Ładowanie...</Typography>
                     ) : (
@@ -551,28 +541,6 @@ const Settings = () => {
                                         value={recordingSeconds}
                                         onChange={(e) => setRecordingSeconds(e.target.value)}
                                     />
-                                </Grid>
-                                <Grid item xs={12} sm={4}>
-                                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                                        <TimePicker
-                                            label="Godzina testu porannego"
-                                            value={morningTime}
-                                            onChange={(time) => setMorningTime(time)}
-                                            ampm={false}
-                                            slotProps={{ textField: { fullWidth: true, size: "small" } }}
-                                        />
-                                    </LocalizationProvider>
-                                </Grid>
-                                <Grid item xs={12} sm={4}>
-                                    <LocalizationProvider dateAdapter={AdapterDayjs}>
-                                        <TimePicker
-                                            label="Godzina testu wieczornego"
-                                            value={eveningTime}
-                                            onChange={(time) => setEveningTime(time)}
-                                            ampm={false}
-                                            slotProps={{ textField: { fullWidth: true, size: "small" } }}
-                                        />
-                                    </LocalizationProvider>
                                 </Grid>
                             </Grid>
                             <Button variant="contained" color="success" onClick={handleSaveSettings}>

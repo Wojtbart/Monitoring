@@ -12,7 +12,8 @@ const SECTIONS = [
         body: [
             "Widok główny (\"/\" i \"/rzut\") pokazuje pomieszczenie z szafami. Świeży rzut startuje bez czujników — dodajesz je sam.",
             "Przytrzymaj ikonkę czujnika w pasku (🔥💨💧👁) i przeciągnij w wybrane miejsce na rzucie, żeby go postawić.",
-            "Przeciągnij szafę lub postawiony czujnik lewym przyciskiem myszy, żeby zmienić jego pozycję — czujnik można przesuwać dowolnie po pokoju (wysokość montażu zostaje stała dla danego typu).",
+            "Przeciągnij szafę lub postawiony czujnik lewym przyciskiem myszy, żeby zmienić jego pozycję — czujnik można przesuwać dowolnie po pokoju (X i głębokość naraz).",
+            "Kliknięcie (bez przeciągnięcia) w postawiony czujnik pożaru/gazu/ruchu zaznacza go i pokazuje strzałki ▲/▼ obok — regulują wysokość montażu niezależnie od przesuwania w poziomie. Czujnik zalania zawsze stoi na podłodze (bez regulacji wysokości).",
             "Prawy klik na czujniku go usuwa.",
             "Dwuklik w szafę otwiera jej widok szczegółowy. Dwuklik w czujnik pożaru/gazu/zalania/drzwi otwiera stronę tego czujnika (test alarmu, kasowanie).",
             "Przycisk \"Zapisz układ\" zapisuje bieżące rozmieszczenie na stałe.",
@@ -28,6 +29,7 @@ const SECTIONS = [
             "Ikonka ping wysyła realny ping na adres management i pokazuje wynik OK/BRAK.",
             "Panel po lewej to wizualny podgląd szafy — kliknięcie ikon 🌡️/💧 przy urządzeniu pokazuje historię temperatury/wilgotności tego slotu.",
             "Na stronie historii temperatury/wilgotności są dwa niezależne poziomy progu: Non-Critical (ostrzeżenie) i Critical — każdy z własnym min/max, własnym alarmem i przyciskiem Symuluj/Skasuj.",
+            "Przełącznik \"Czujnik podłączony\" na górze tej strony wyłącza globalnie mock i alarmy temp./wilg. we wszystkich szafach naraz (nie ma per-unit realnego czujnika, tylko wspólny mock) — przydatne, dopóki nie podłączysz realnych czujników per slot.",
             "\"Opóźnienie alarmu\" — odczyt musi być poza progiem przez tyle sekund zanim alarm faktycznie się włączy (0 = natychmiast).",
             "Powrót odczytu w normę wysyła jednorazowy log/powiadomienie (jeśli włączone w regule), ale nie kasuje alarmu automatycznie — to zawsze ręczna akcja.",
             "Pasek pod wartością pokazuje graficznie gdzie odczyt leży względem progów (czerwono-zielono-czerwono). Niżej: najniższy/najwyższy zanotowany odczyt z datą i przycisk \"Wyczyść rekordy\".",
@@ -39,7 +41,7 @@ const SECTIONS = [
         body: [
             "W Ustawieniach → sekcja \"Powiadomienia\" tworzysz grupy mailowe i SMS (nazwa + lista adresów/numerów).",
             "Tabela reguł przypisuje grupę do zdarzenia (pożar/gaz/zalanie/drzwi/próg temp.-wilg. szafy/napięcie zasilania) i włącza kanał (e-mail/SMS) osobno.",
-            "\"Napięcie zasilania\" w menu bocznym pokazuje bieżącą wartość, pozwala ustawić progi min/max i ma własny przycisk testu/kasowania alarmu — tak samo jak inne czujniki.",
+            "\"Napięcie zasilania\" w menu bocznym pokazuje bieżącą wartość, pozwala ustawić progi min/max i ma własny przycisk testu/kasowania alarmu — tak samo jak inne czujniki. Przełącznik \"Czujnik podłączony\" wyłącza mock i alarmy, gdy nie masz podpiętego realnego czujnika napięcia — tak samo działa na stronie temperatury/wilgotności per-slot w szafie (patrz sekcja \"Widok szafy\").",
             "Konfiguracja serwera SMTP (host/port/login/hasło/nadawca) jest w Ustawieniach → sekcja \"SMTP\" — nie w pliku .env. Jest tam też przycisk do wysłania testowego e-maila.",
             "Każda grupa mailowa/SMS ma własny harmonogram (\"Harmonogram wysyłki\") — siatka dzień×godzina określająca, kiedy powiadomienia faktycznie wychodzą (alarm zawsze się loguje, niezależnie od harmonogramu).",
             "Reguła powiadomień może mieć własny temat e-maila (\"Własny temat e-mail\") i dołączać zdjęcie z kamery do wiadomości (\"Załącz zdjęcie z kamery\").",

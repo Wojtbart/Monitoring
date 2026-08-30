@@ -55,21 +55,15 @@ class Setting(db.Model):
             {
                 'id': setting.id,
                 'recording_seconds': setting.recording_seconds,
-                'evening_test_time': setting.evening_test_time.strftime('%H:%M:%S'),
-                'morning_test_time': setting.morning_test_time.strftime('%H:%M:%S')
             }
             for setting in settings_list
         ]
 
     @staticmethod
-    def update_settings(id, recording_seconds, evening_test_time, morning_test_time):
-        from datetime import datetime
-
+    def update_settings(id, recording_seconds):
         settings = db.session.get(Setting, id)
         if settings:
             settings.recording_seconds = recording_seconds
-            settings.evening_test_time = datetime.strptime(evening_test_time, '%H:%M:%S').time()
-            settings.morning_test_time = datetime.strptime(morning_test_time, '%H:%M:%S').time()
             db.session.commit()
             return True
         return False
@@ -163,6 +157,10 @@ class DeviceSensor(db.Model):
         if device.highest_humidity is None or device.humidity > device.highest_humidity:
             device.highest_humidity = device.humidity
             device.highest_humidity_at = now
+
+    @staticmethod
+    def get_existing(rack_id, unit):
+        return DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
 
     @staticmethod
     def get_or_create_reading(rack_id, unit):
@@ -677,12 +675,13 @@ class VoltageThreshold(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     min_voltage = db.Column(db.Float, nullable=False, default=11.0)
     max_voltage = db.Column(db.Float, nullable=False, default=15.0)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
 
     @staticmethod
     def get_or_create():
         threshold = VoltageThreshold.query.first()
         if not threshold:
-            threshold = VoltageThreshold(min_voltage=11.0, max_voltage=15.0)
+            threshold = VoltageThreshold(min_voltage=11.0, max_voltage=15.0, enabled=True)
             db.session.add(threshold)
             db.session.commit()
         return threshold
@@ -694,3 +693,35 @@ class VoltageThreshold(db.Model):
         threshold.max_voltage = max_voltage
         db.session.commit()
         return threshold
+
+    @staticmethod
+    def set_enabled(enabled):
+        threshold = VoltageThreshold.get_or_create()
+        threshold.enabled = enabled
+        db.session.commit()
+        return threshold
+
+
+class DeviceSensorSettings(db.Model):
+    """Globalny wyłącznik mockowanych czujników temp/wilg. per-slot w szafach
+    (DeviceSensor) — nie ma realnego sprzętu per-unit, tylko losowy mock, więc
+    admin może go wyłączyć zamiast dostawać fałszywe alarmy z pustych szaf."""
+    __tablename__ = 'device_sensor_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+
+    @staticmethod
+    def get_or_create():
+        settings = DeviceSensorSettings.query.first()
+        if not settings:
+            settings = DeviceSensorSettings(enabled=True)
+            db.session.add(settings)
+            db.session.commit()
+        return settings
+
+    @staticmethod
+    def set_enabled(enabled):
+        settings = DeviceSensorSettings.get_or_create()
+        settings.enabled = enabled
+        db.session.commit()
+        return settings

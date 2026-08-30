@@ -8,6 +8,9 @@ class _FakeSensor:
         self.min_voltage = min_voltage
         self.max_voltage = max_voltage
 
+    def update_voltage_enabled(self, enabled):
+        self.voltage_enabled = enabled
+
 
 def _login(client, app):
     with app.app_context():
@@ -21,6 +24,34 @@ def test_get_voltage_threshold_returns_defaults(client):
     data = resp.get_json()
     assert data['min_voltage'] == 11.0
     assert data['max_voltage'] == 15.0
+    assert data['enabled'] is True
+
+
+def test_put_voltage_enabled_requires_auth(client):
+    resp = client.put('/voltage-enabled', json={'enabled': False})
+    assert resp.status_code == 401
+
+
+def test_put_voltage_enabled_rejects_non_bool(client, app):
+    token = _login(client, app)
+    resp = client.put('/voltage-enabled', json={'enabled': 'nope'},
+                       headers={'Authorization': f'Bearer {token}'})
+    assert resp.status_code == 400
+
+
+def test_put_voltage_enabled_updates_threshold_and_sensor(client, app):
+    token = _login(client, app)
+    app_module.sensor = _FakeSensor()
+
+    resp = client.put('/voltage-enabled', json={'enabled': False},
+                       headers={'Authorization': f'Bearer {token}'})
+    assert resp.status_code == 200
+    assert resp.get_json() == {'enabled': False}
+
+    with app.app_context():
+        threshold = VoltageThreshold.get_or_create()
+        assert threshold.enabled is False
+    assert app_module.sensor.voltage_enabled is False
 
 
 def test_put_voltage_threshold_requires_auth(client):
