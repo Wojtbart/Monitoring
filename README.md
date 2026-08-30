@@ -4,7 +4,7 @@ Aplikacja webowa do monitorowania serwerowni: podgląd czujników (temperatura, 
 
 ## Stack technologiczny
 
-- **Backend:** Python / Flask, Flask-SQLAlchemy (SQLite), Flask-JWT-Extended (autoryzacja), OpenCV (kamera)
+- **Backend:** Python / Flask, Flask-SQLAlchemy (SQLite), Flask-JWT-Extended (autoryzacja), OpenCV (kamera — domyślny backend na Windows/dev; na Raspberry Pi z modułem CSI opcjonalnie `picamera2`, patrz `CAMERA_BACKEND` niżej)
 - **Frontend:** React (Vite), Material UI, react-router-dom v7 (routing), react-konva (wizualizacja rzutu serwerowni), recharts (wykresy)
 
 ## Struktura repo

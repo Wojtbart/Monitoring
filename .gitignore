@@ -1,4 +1,7 @@
 .claude/settings.local.json
 
+# Superpowers (Claude Code plany/specyfikacje robocze — nie część projektu)
+docs/superpowers/
+
 # IDE
 .vs/
