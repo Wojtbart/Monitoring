@@ -51,7 +51,7 @@ const Logs = () => {
     }), [accessToken]);
 
     useEffect(() => {
-        if (!accessToken) navigate("/loginPage");
+        if (!accessToken) navigate("/login");
     }, [accessToken, navigate]);
 
     const fetchLogs = useCallback(async () => {
@@ -59,7 +59,7 @@ const Logs = () => {
             const { data } = await axiosAuth.get("/logs");
             setLogs(data.logs || []);
         } catch {
-            navigate("/loginPage");
+            navigate("/login");
         }
     }, [axiosAuth, navigate]);
 
@@ -68,7 +68,7 @@ const Logs = () => {
             const { data } = await axiosAuth.get("/users/me");
             setIsAdmin(data.isAdmin || false);
         } catch {
-            navigate("/loginPage");
+            navigate("/login");
         }
     }, [axiosAuth, navigate]);
 
@@ -87,7 +87,7 @@ const Logs = () => {
             setSelectedIds([]);
             setPage(1);
         } catch {
-            navigate("/loginPage");
+            navigate("/login");
         }
     };
 
@@ -98,7 +98,7 @@ const Logs = () => {
             setLogs(prev => prev.filter(l => !selectedIds.includes(l.id)));
             setSelectedIds([]);
         } catch {
-            navigate("/loginPage");
+            navigate("/login");
         }
     };
 

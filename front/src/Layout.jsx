@@ -30,6 +30,8 @@ import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import HomeIcon from "@mui/icons-material/Home";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import BoltIcon from "@mui/icons-material/Bolt";
+import NetworkPingIcon from "@mui/icons-material/NetworkPing";
+import { useRealTimeData } from "./RealTimeDataContext";
 import "./Layout.css";
 
 const Layout = ({ children }) => {
@@ -39,7 +41,6 @@ const Layout = ({ children }) => {
     const [username, setUsername] = useState("");
     const [isAdmin, setIsAdmin] = useState(false);
     const [now, setNow] = useState(new Date());
-    const [uptimeSeconds, setUptimeSeconds] = useState(null);
     const navigate = useNavigate();
     const theme = useTheme();
 
@@ -48,17 +49,7 @@ const Layout = ({ children }) => {
         return () => clearInterval(iv);
     }, []);
 
-    useEffect(() => {
-        const fetchStatus = async () => {
-            try {
-                const { data } = await axios.get(`${API_BASE}/real-time-data`);
-                setUptimeSeconds(data.uptime_seconds);
-            } catch (_) {}
-        };
-        fetchStatus();
-        const iv = setInterval(fetchStatus, 5000);
-        return () => clearInterval(iv);
-    }, []);
+    const { uptime_seconds: uptimeSeconds = null } = useRealTimeData();
 
     const formatUptime = (seconds) => {
         if (seconds == null) return "—";
@@ -74,12 +65,12 @@ const Layout = ({ children }) => {
             });
         } catch (_) {}
         localStorage.removeItem("JWT");
-        navigate("/loginPage");
+        navigate("/login");
     };
 
     useEffect(() => {
         if (accessToken === null) {
-            navigate("/loginPage");
+            navigate("/login");
         } else {
             const fetchUser = async () => {
                 try {
@@ -95,11 +86,13 @@ const Layout = ({ children }) => {
                     return response.data;
                 } catch (error) {
                     console.error("Error:", error);
-                    navigate("/loginPage");
+                    navigate("/login");
+                    return null;
                 }
             };
             const getUser = async () => {
                 const result = await fetchUser();
+                if (!result) return;
                 setUsername(result.currentUser);
                 setIsAdmin(result.isAdmin);
             };
@@ -111,15 +104,19 @@ const Layout = ({ children }) => {
         setOpenMenu(open);
     };
 
+    const handleFloorPlan = () => {
+        navigate("/");
+    };
+
     const handleHome = async () => {
-        navigate("/testDevice");
+        navigate("/test-device");
     };
 
     const handleCamera = async () => {
         navigate("/camera");
     };
     const handleSavedVideos = () => {
-        navigate("/savedVideos");
+        navigate("/saved-videos");
     };
 
     const handleSettings = () => {
@@ -135,16 +132,16 @@ const Layout = ({ children }) => {
     };
 
     const handleHelp = () => {
-        navigate("/pomoc");
+        navigate("/help");
     };
 
     const handleVoltage = () => {
-        navigate("/napiecie");
+        navigate("/voltage");
     };
 
     const handleRegister = () => {
         if (isAdmin) {
-            navigate("/registerUser");
+            navigate("/register-user");
         } else {
             alert("Nie masz uprawnień do tej zakładki");
         }
@@ -232,8 +229,12 @@ const Layout = ({ children }) => {
                             </DrawerHeader>
                             <Divider />
                             <List>
-                                <ListItemButton onClick={handleHome}>
+                                <ListItemButton onClick={handleFloorPlan}>
                                     <ListItemIcon><HomeIcon /></ListItemIcon>
+                                    <ListItemText primary="Strona główna" />
+                                </ListItemButton>
+                                <ListItemButton onClick={handleHome}>
+                                    <ListItemIcon><NetworkPingIcon /></ListItemIcon>
                                     <ListItemText primary="Test urządzenia" />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleSavedVideos}>
@@ -258,7 +259,7 @@ const Layout = ({ children }) => {
                                 </ListItemButton>
                                 <ListItemButton onClick={handleVoltage}>
                                     <ListItemIcon><BoltIcon /></ListItemIcon>
-                                    <ListItemText primary="Napięcie zasilania" />
+                                    <ListItemText primary="Napięcie zasilania UPS" />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleHelp}>
                                     <ListItemIcon><HelpOutlineIcon /></ListItemIcon>

@@ -104,7 +104,7 @@ const RegisterPage = () => {
 
     return (
         <Layout>
-            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", pt: 4 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", pt: 4, pb: 4 }}>
                 <Card sx={{ width: 420, borderRadius: 3, overflow: "hidden", boxShadow: 4 }}>
 
                     {/* Header */}

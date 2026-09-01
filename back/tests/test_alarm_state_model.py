@@ -49,6 +49,43 @@ def test_clear_on_unknown_type_returns_false(app):
         assert AlarmState.clear('unknown') is False
 
 
+def test_trigger_resets_acknowledged(app):
+    with app.app_context():
+        AlarmState.seed_defaults()
+        AlarmState.trigger('fire')
+        AlarmState.acknowledge('fire')
+        AlarmState.trigger('fire')
+        state = AlarmState.query.filter_by(event_type='fire').first()
+        assert state.acknowledged is False
+
+
+def test_acknowledge_sets_flag_without_deactivating(app):
+    with app.app_context():
+        AlarmState.seed_defaults()
+        AlarmState.trigger('gas')
+        result = AlarmState.acknowledge('gas')
+        assert result is True
+        state = AlarmState.query.filter_by(event_type='gas').first()
+        assert state.acknowledged is True
+        assert state.active is True
+
+
+def test_acknowledge_on_unknown_type_returns_false(app):
+    with app.app_context():
+        AlarmState.seed_defaults()
+        assert AlarmState.acknowledge('unknown') is False
+
+
+def test_clear_resets_acknowledged(app):
+    with app.app_context():
+        AlarmState.seed_defaults()
+        AlarmState.trigger('water')
+        AlarmState.acknowledge('water')
+        AlarmState.clear('water')
+        state = AlarmState.query.filter_by(event_type='water').first()
+        assert state.acknowledged is False
+
+
 def test_get_all_returns_serializable_dicts(app):
     with app.app_context():
         AlarmState.seed_defaults()

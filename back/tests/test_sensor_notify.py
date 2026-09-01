@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from models import db, AlarmState, NotificationRule, EmailGroup, SmsGroup
+from models import db, AlarmState, NotificationRule, NotificationGroup
 from sensors import Sensor
 
 
@@ -17,11 +17,11 @@ def test_notify_sends_email_when_rule_enabled(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = EmailGroup.add_group('IT')
-        EmailGroup.add_recipient(group.id, 'a@b.com')
+        group = NotificationGroup.add_group('IT')
+        NotificationGroup.add_recipient(group.id, email='a@b.com')
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.email_enabled = True
-        rule.email_group_id = group.id
+        rule.group_id = group.id
         db.session.commit()
 
     sensor = _bare_sensor(app)
@@ -52,11 +52,11 @@ def test_raise_alert_skips_notify_during_cooldown(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = EmailGroup.add_group('IT')
-        EmailGroup.add_recipient(group.id, 'a@b.com')
+        group = NotificationGroup.add_group('IT')
+        NotificationGroup.add_recipient(group.id, email='a@b.com')
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.email_enabled = True
-        rule.email_group_id = group.id
+        rule.group_id = group.id
         db.session.commit()
 
     sensor = _bare_sensor(app)
@@ -72,11 +72,11 @@ def test_raise_alert_repeats_after_notify_again_window(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = EmailGroup.add_group('IT')
-        EmailGroup.add_recipient(group.id, 'a@b.com')
+        group = NotificationGroup.add_group('IT')
+        NotificationGroup.add_recipient(group.id, email='a@b.com')
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.email_enabled = True
-        rule.email_group_id = group.id
+        rule.group_id = group.id
         rule.notify_again_minutes = 5
         db.session.commit()
 
@@ -100,11 +100,11 @@ def test_notify_uses_custom_sms_text_when_enabled(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = SmsGroup.add_group('IT-SMS')
-        SmsGroup.add_recipient(group.id, '123456789')
+        group = NotificationGroup.add_group('IT-SMS')
+        NotificationGroup.add_recipient(group.id, phone_number='123456789')
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.sms_enabled = True
-        rule.sms_group_id = group.id
+        rule.group_id = group.id
         rule.sms_custom_enabled = True
         rule.sms_custom_message = 'Alarm pożarowy, sprawdź budynek!'
         db.session.commit()
@@ -123,11 +123,11 @@ def test_notify_uses_generated_text_when_custom_disabled(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = SmsGroup.add_group('IT-SMS')
-        SmsGroup.add_recipient(group.id, '123456789')
+        group = NotificationGroup.add_group('IT-SMS')
+        NotificationGroup.add_recipient(group.id, phone_number='123456789')
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.sms_enabled = True
-        rule.sms_group_id = group.id
+        rule.group_id = group.id
         rule.sms_custom_enabled = False
         rule.sms_custom_message = 'Alarm pożarowy, sprawdź budynek!'
         db.session.commit()
@@ -144,11 +144,11 @@ def test_notify_uses_custom_email_subject_when_enabled(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = EmailGroup.add_group('IT')
-        EmailGroup.add_recipient(group.id, 'a@b.com')
+        group = NotificationGroup.add_group('IT')
+        NotificationGroup.add_recipient(group.id, email='a@b.com')
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.email_enabled = True
-        rule.email_group_id = group.id
+        rule.group_id = group.id
         rule.email_custom_subject_enabled = True
         rule.email_custom_subject = 'UWAGA: pożar!'
         db.session.commit()
@@ -165,12 +165,12 @@ def test_notify_skips_email_outside_group_schedule(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = EmailGroup.add_group('IT')
-        EmailGroup.add_recipient(group.id, 'a@b.com')
-        EmailGroup.update_schedule(group.id, '0' * 168)
+        group = NotificationGroup.add_group('IT')
+        NotificationGroup.add_recipient(group.id, email='a@b.com')
+        NotificationGroup.update_schedule(group.id, '0' * 168)
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.email_enabled = True
-        rule.email_group_id = group.id
+        rule.group_id = group.id
         db.session.commit()
 
     sensor = _bare_sensor(app)
@@ -185,12 +185,12 @@ def test_notify_skips_sms_outside_group_schedule(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = SmsGroup.add_group('IT-SMS')
-        SmsGroup.add_recipient(group.id, '123456789')
-        SmsGroup.update_schedule(group.id, '0' * 168)
+        group = NotificationGroup.add_group('IT-SMS')
+        NotificationGroup.add_recipient(group.id, phone_number='123456789')
+        NotificationGroup.update_schedule(group.id, '0' * 168)
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.sms_enabled = True
-        rule.sms_group_id = group.id
+        rule.group_id = group.id
         db.session.commit()
 
     sensor = _bare_sensor(app)
@@ -215,11 +215,11 @@ def test_notify_attaches_camera_snapshot_when_enabled(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = EmailGroup.add_group('IT')
-        EmailGroup.add_recipient(group.id, 'a@b.com')
+        group = NotificationGroup.add_group('IT')
+        NotificationGroup.add_recipient(group.id, email='a@b.com')
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.email_enabled = True
-        rule.email_group_id = group.id
+        rule.group_id = group.id
         rule.email_attach_camera = True
         db.session.commit()
 
@@ -237,11 +237,11 @@ def test_notify_does_not_attach_camera_when_disabled(app, monkeypatch):
 
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = EmailGroup.add_group('IT')
-        EmailGroup.add_recipient(group.id, 'a@b.com')
+        group = NotificationGroup.add_group('IT')
+        NotificationGroup.add_recipient(group.id, email='a@b.com')
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.email_enabled = True
-        rule.email_group_id = group.id
+        rule.group_id = group.id
         rule.email_attach_camera = False
         db.session.commit()
 

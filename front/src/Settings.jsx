@@ -20,10 +20,12 @@ import {
     Accordion,
     AccordionSummary,
     AccordionDetails,
+    Tooltip,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import Card from "@mui/material/Card";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import SaveIcon from "@mui/icons-material/Save";
 import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive";
 import DeleteIcon from "@mui/icons-material/Delete";
 import PersonIcon from "@mui/icons-material/Person";
@@ -36,6 +38,9 @@ import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import EmailIcon from "@mui/icons-material/Email";
 import SettingsBackupRestoreIcon from "@mui/icons-material/SettingsBackupRestore";
+import BoltIcon from "@mui/icons-material/Bolt";
+import DeviceThermostatIcon from "@mui/icons-material/DeviceThermostat";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 
 const DAY_LABELS = ["Pon", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"];
 
@@ -54,6 +59,9 @@ function ScheduleEditor({ schedule, onChange }) {
                 <Button size="small" onClick={() => setAll("1")}>Zaznacz wszystko</Button>
                 <Button size="small" onClick={() => setAll("0")}>Odznacz wszystko</Button>
             </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
+                Wiersze = dni tygodnia, kolumny (0–23) = godziny doby. Zielone pole = w tej godzinie danego dnia powiadomienia mogą wychodzić.
+            </Typography>
             <Box sx={{ overflowX: "auto" }}>
                 <Box sx={{ display: "grid", gridTemplateColumns: "40px repeat(24, 16px)", gap: "2px", width: "fit-content" }}>
                     <Box />
@@ -126,6 +134,14 @@ function SectionCard({ icon, title, children, id }) {
     );
 }
 
+function InfoTip({ text }) {
+    return (
+        <Tooltip title={text} arrow placement="top">
+            <InfoOutlinedIcon sx={{ fontSize: 16, color: "text.disabled", cursor: "help", verticalAlign: "middle", ml: 0.5 }} />
+        </Tooltip>
+    );
+}
+
 const Settings = () => {
     const accessToken = localStorage.getItem("JWT");
     const navigate = useNavigate();
@@ -133,6 +149,7 @@ const Settings = () => {
 
     const [id, setId] = useState(null);
     const [recordingSeconds, setRecordingSeconds] = useState("");
+    const [autoSaveLayout, setAutoSaveLayout] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [settingsStatus, setSettingsStatus] = useState(null);
 
@@ -140,15 +157,10 @@ const Settings = () => {
         motion: false, fire: false, gas: false, door: false, water: false,
     });
 
-    const [emailGroups, setEmailGroups] = useState([]);
-    const [newEmailGroupName, setNewEmailGroupName] = useState("");
-    const [newEmailByGroup, setNewEmailByGroup] = useState({});
-    const [emailGroupStatus, setEmailGroupStatus] = useState(null);
-
-    const [smsGroups, setSmsGroups] = useState([]);
-    const [newSmsGroupName, setNewSmsGroupName] = useState("");
-    const [newPhoneByGroup, setNewPhoneByGroup] = useState({});
-    const [smsGroupStatus, setSmsGroupStatus] = useState(null);
+    const [groups, setGroups] = useState([]);
+    const [newGroupName, setNewGroupName] = useState("");
+    const [newRecipientByGroup, setNewRecipientByGroup] = useState({});
+    const [groupStatus, setGroupStatus] = useState(null);
 
     const [rules, setRules] = useState([]);
     const [rulesStatus, setRulesStatus] = useState(null);
@@ -164,6 +176,12 @@ const Settings = () => {
     const [restoreStatus, setRestoreStatus] = useState(null);
 
     const EVENT_TYPE_LABELS = { fire: "Pożar", gas: "Gaz/Dym", water: "Zalanie", door: "Drzwi otwarte", device_threshold: "Próg temp./wilgotności szafy", voltage: "Napięcie zasilania" };
+    const EVENT_TYPE_COLORS = { fire: "#e53935", gas: "#8e24aa", water: "#1e88e5", door: "#6d4c41", device_threshold: "#00695c", voltage: "#f9a825" };
+    const GROUP_COLORS = ["#1565c0", "#2e7d32", "#e65100", "#6a1b9a", "#00838f", "#ad1457", "#4e342e"];
+    const EVENT_TYPE_ICONS = {
+        fire: LocalFireDepartmentIcon, gas: GasMeterIcon, water: WaterIcon,
+        door: SensorDoorIcon, device_threshold: DeviceThermostatIcon, voltage: BoltIcon,
+    };
 
     useEffect(() => {
         const fetchEnv = async () => {
@@ -179,7 +197,7 @@ const Settings = () => {
 
     useEffect(() => {
         if (accessToken === null) {
-            navigate("/loginPage");
+            navigate("/login");
             return;
         }
         const fetchInitialData = async () => {
@@ -191,6 +209,7 @@ const Settings = () => {
                 const settings = data.settings[0];
                 setId(settings.id);
                 setRecordingSeconds(String(settings.recording_seconds));
+                setAutoSaveLayout(!!settings.auto_save_layout);
             } catch (error) {
                 console.error("Błąd pobierania ustawień:", error);
             }
@@ -202,13 +221,11 @@ const Settings = () => {
     useEffect(() => {
         const fetchNotifications = async () => {
             try {
-                const [egRes, sgRes, rulesRes] = await Promise.all([
-                    axios.get(`${API_BASE}/email-groups`),
-                    axios.get(`${API_BASE}/sms-groups`),
+                const [groupsRes, rulesRes] = await Promise.all([
+                    axios.get(`${API_BASE}/notification-groups`),
                     axios.get(`${API_BASE}/notification-rules`),
                 ]);
-                setEmailGroups(egRes.data.groups);
-                setSmsGroups(sgRes.data.groups);
+                setGroups(groupsRes.data.groups);
                 setRules(rulesRes.data.rules);
             } catch (_) {}
         };
@@ -249,6 +266,7 @@ const Settings = () => {
                 {
                     id,
                     recording_seconds: Number(recordingSeconds),
+                    auto_save_layout: autoSaveLayout,
                 },
                 { headers: { Authorization: `Bearer ${accessToken}` } },
             );
@@ -288,19 +306,10 @@ const Settings = () => {
         setTimeout(() => setSmtpTestStatus(null), 3000);
     };
 
-    const handleUpdateEmailSchedule = async (groupId, schedule) => {
-        setEmailGroups(prev => prev.map(g => g.id === groupId ? { ...g, schedule } : g));
+    const handleUpdateGroupSchedule = async (groupId, schedule) => {
+        setGroups(prev => prev.map(g => g.id === groupId ? { ...g, schedule } : g));
         try {
-            await axios.put(`${API_BASE}/email-groups/${groupId}/schedule`, { schedule }, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-            });
-        } catch (_) {}
-    };
-
-    const handleUpdateSmsSchedule = async (groupId, schedule) => {
-        setSmsGroups(prev => prev.map(g => g.id === groupId ? { ...g, schedule } : g));
-        try {
-            await axios.put(`${API_BASE}/sms-groups/${groupId}/schedule`, { schedule }, {
+            await axios.put(`${API_BASE}/notification-groups/${groupId}/schedule`, { schedule }, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
         } catch (_) {}
@@ -342,112 +351,64 @@ const Settings = () => {
         setTimeout(() => setRestoreStatus(null), 5000);
     };
 
-    const handleAddEmailGroup = async () => {
-        if (!newEmailGroupName.trim()) return;
+    const handleAddGroup = async () => {
+        if (!newGroupName.trim()) return;
         try {
-            await axios.post(`${API_BASE}/email-groups`, { name: newEmailGroupName }, { headers: { Authorization: `Bearer ${accessToken}` } });
-            const { data } = await axios.get(`${API_BASE}/email-groups`);
-            setEmailGroups(data.groups);
-            setNewEmailGroupName("");
-            setEmailGroupStatus({ type: "success", message: "Grupa dodana." });
+            await axios.post(`${API_BASE}/notification-groups`, { name: newGroupName }, { headers: { Authorization: `Bearer ${accessToken}` } });
+            const { data } = await axios.get(`${API_BASE}/notification-groups`);
+            setGroups(data.groups);
+            setNewGroupName("");
+            setGroupStatus({ type: "success", message: "Grupa dodana." });
         } catch (error) {
-            setEmailGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd dodawania grupy." });
+            setGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd dodawania grupy." });
         }
-        setTimeout(() => setEmailGroupStatus(null), 2500);
+        setTimeout(() => setGroupStatus(null), 2500);
     };
 
-    const handleDeleteEmailGroup = async (groupId) => {
-        if (!window.confirm("Usunąć tę grupę mailową wraz z adresami?")) return;
+    const handleDeleteGroup = async (groupId) => {
+        if (!window.confirm("Usunąć tę grupę wraz z odbiorcami?")) return;
         try {
-            await axios.delete(`${API_BASE}/email-groups/${groupId}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-            setEmailGroups(prev => prev.filter(g => g.id !== groupId));
-            setEmailGroupStatus({ type: "success", message: "Grupa usunięta." });
+            await axios.delete(`${API_BASE}/notification-groups/${groupId}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+            setGroups(prev => prev.filter(g => g.id !== groupId));
+            setGroupStatus({ type: "success", message: "Grupa usunięta." });
         } catch (error) {
-            setEmailGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd usuwania grupy." });
+            setGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd usuwania grupy." });
         }
-        setTimeout(() => setEmailGroupStatus(null), 2500);
+        setTimeout(() => setGroupStatus(null), 2500);
     };
 
-    const handleAddEmailRecipient = async (groupId) => {
-        const email = (newEmailByGroup[groupId] || "").trim();
-        if (!email) return;
+    const handleAddRecipient = async (groupId) => {
+        const draft = newRecipientByGroup[groupId] || {};
+        const email = (draft.email || "").trim();
+        const phoneNumber = (draft.phone || "").trim();
+        if (!email && !phoneNumber) return;
         try {
-            const { data } = await axios.post(`${API_BASE}/email-groups/${groupId}/recipients`, { email }, { headers: { Authorization: `Bearer ${accessToken}` } });
-            setEmailGroups(prev => prev.map(g => g.id === groupId
-                ? { ...g, recipients: [...g.recipients, { id: data.id, email }] }
+            const { data } = await axios.post(
+                `${API_BASE}/notification-groups/${groupId}/recipients`,
+                { email: email || undefined, phone_number: phoneNumber || undefined },
+                { headers: { Authorization: `Bearer ${accessToken}` } },
+            );
+            setGroups(prev => prev.map(g => g.id === groupId
+                ? { ...g, recipients: [...g.recipients, { id: data.id, email: email || null, phone_number: phoneNumber || null }] }
                 : g));
-            setNewEmailByGroup(prev => ({ ...prev, [groupId]: "" }));
-            setEmailGroupStatus({ type: "success", message: "Adres dodany." });
+            setNewRecipientByGroup(prev => ({ ...prev, [groupId]: { email: "", phone: "" } }));
+            setGroupStatus({ type: "success", message: "Odbiorca dodany." });
         } catch (error) {
-            setEmailGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd dodawania adresu." });
+            setGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd dodawania odbiorcy." });
         }
-        setTimeout(() => setEmailGroupStatus(null), 2500);
+        setTimeout(() => setGroupStatus(null), 2500);
     };
 
-    const handleDeleteEmailRecipient = async (groupId, recipientId) => {
+    const handleDeleteRecipient = async (groupId, recipientId) => {
         try {
-            await axios.delete(`${API_BASE}/email-groups/${groupId}/recipients/${recipientId}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-            setEmailGroups(prev => prev.map(g => g.id === groupId
+            await axios.delete(`${API_BASE}/notification-groups/${groupId}/recipients/${recipientId}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+            setGroups(prev => prev.map(g => g.id === groupId
                 ? { ...g, recipients: g.recipients.filter(r => r.id !== recipientId) }
                 : g));
         } catch (error) {
-            setEmailGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd usuwania adresu." });
+            setGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd usuwania odbiorcy." });
         }
-        setTimeout(() => setEmailGroupStatus(null), 2500);
-    };
-
-    const handleAddSmsGroup = async () => {
-        if (!newSmsGroupName.trim()) return;
-        try {
-            await axios.post(`${API_BASE}/sms-groups`, { name: newSmsGroupName }, { headers: { Authorization: `Bearer ${accessToken}` } });
-            const { data } = await axios.get(`${API_BASE}/sms-groups`);
-            setSmsGroups(data.groups);
-            setNewSmsGroupName("");
-            setSmsGroupStatus({ type: "success", message: "Grupa dodana." });
-        } catch (error) {
-            setSmsGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd dodawania grupy." });
-        }
-        setTimeout(() => setSmsGroupStatus(null), 2500);
-    };
-
-    const handleDeleteSmsGroup = async (groupId) => {
-        if (!window.confirm("Usunąć tę grupę SMS wraz z numerami?")) return;
-        try {
-            await axios.delete(`${API_BASE}/sms-groups/${groupId}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-            setSmsGroups(prev => prev.filter(g => g.id !== groupId));
-            setSmsGroupStatus({ type: "success", message: "Grupa usunięta." });
-        } catch (error) {
-            setSmsGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd usuwania grupy." });
-        }
-        setTimeout(() => setSmsGroupStatus(null), 2500);
-    };
-
-    const handleAddSmsRecipient = async (groupId) => {
-        const phoneNumber = (newPhoneByGroup[groupId] || "").trim();
-        if (!phoneNumber) return;
-        try {
-            const { data } = await axios.post(`${API_BASE}/sms-groups/${groupId}/recipients`, { phone_number: phoneNumber }, { headers: { Authorization: `Bearer ${accessToken}` } });
-            setSmsGroups(prev => prev.map(g => g.id === groupId
-                ? { ...g, recipients: [...g.recipients, { id: data.id, phone_number: phoneNumber }] }
-                : g));
-            setNewPhoneByGroup(prev => ({ ...prev, [groupId]: "" }));
-            setSmsGroupStatus({ type: "success", message: "Numer dodany." });
-        } catch (error) {
-            setSmsGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd dodawania numeru." });
-        }
-        setTimeout(() => setSmsGroupStatus(null), 2500);
-    };
-
-    const handleDeleteSmsRecipient = async (groupId, recipientId) => {
-        try {
-            await axios.delete(`${API_BASE}/sms-groups/${groupId}/recipients/${recipientId}`, { headers: { Authorization: `Bearer ${accessToken}` } });
-            setSmsGroups(prev => prev.map(g => g.id === groupId
-                ? { ...g, recipients: g.recipients.filter(r => r.id !== recipientId) }
-                : g));
-        } catch (error) {
-            setSmsGroupStatus({ type: "error", message: error.response?.data?.message || "Błąd usuwania numeru." });
-        }
-        setTimeout(() => setSmsGroupStatus(null), 2500);
+        setTimeout(() => setGroupStatus(null), 2500);
     };
 
     const updateRule = (eventType, patch) => {
@@ -531,21 +492,49 @@ const Settings = () => {
                         <Typography color="text.secondary">Ładowanie...</Typography>
                     ) : (
                         <>
-                            <Grid container spacing={2} sx={{ mb: 2 }}>
-                                <Grid item xs={12} sm={4}>
-                                    <TextField
-                                        label="Czas do zatrzymania nagrywania (s)"
-                                        type="number"
-                                        fullWidth
-                                        size="small"
-                                        value={recordingSeconds}
-                                        onChange={(e) => setRecordingSeconds(e.target.value)}
+                            <TextField
+                                label="Czas do zatrzymania nagrywania (s)"
+                                type="number"
+                                size="small"
+                                sx={{ mb: 2, width: 320 }}
+                                value={recordingSeconds}
+                                onChange={(e) => setRecordingSeconds(e.target.value)}
+                                helperText="Kamera nagrywa automatycznie po wykryciu ruchu. To nie jest długość nagrania — to czas ciszy (bez ruchu) po którym nagrywanie się zatrzyma. Dopóki ruch jest wykrywany, licznik odlicza od nowa i nagranie trwa dalej."
+                            />
+                            <Box>
+                                <Button variant="contained" color="success" onClick={handleSaveSettings}>
+                                    Zapisz zmiany
+                                </Button>
+                            </Box>
+                            {settingsStatus && (
+                                <Alert severity={settingsStatus.type} sx={{ mt: 2 }} onClose={() => setSettingsStatus(null)}>
+                                    {settingsStatus.message}
+                                </Alert>
+                            )}
+                        </>
+                    )}
+                </SectionCard>
+
+                <SectionCard icon={<SaveIcon />} title="Automatyczny zapis układu">
+                    {isLoading ? (
+                        <Typography color="text.secondary">Ładowanie...</Typography>
+                    ) : (
+                        <>
+                            <FormControlLabel
+                                sx={{ mb: 2 }}
+                                control={
+                                    <Checkbox
+                                        checked={autoSaveLayout}
+                                        onChange={(e) => setAutoSaveLayout(e.target.checked)}
                                     />
-                                </Grid>
-                            </Grid>
-                            <Button variant="contained" color="success" onClick={handleSaveSettings}>
-                                Zapisz zmiany
-                            </Button>
+                                }
+                                label="Automatyczny zapis układu (rzut serwerowni i widok szafy) — bez klikania „Zapisz układ” po każdej zmianie"
+                            />
+                            <Box>
+                                <Button variant="contained" color="success" onClick={handleSaveSettings}>
+                                    Zapisz zmiany
+                                </Button>
+                            </Box>
                             {settingsStatus && (
                                 <Alert severity={settingsStatus.type} sx={{ mt: 2 }} onClose={() => setSettingsStatus(null)}>
                                     {settingsStatus.message}
@@ -566,9 +555,14 @@ const Settings = () => {
                         <FormControlLabel
                             control={<Checkbox checked={smtpSettings.use_tls}
                                 onChange={e => setSmtpSettings(prev => ({ ...prev, use_tls: e.target.checked }))} />}
-                            label="STARTTLS"
+                            label="Bezpieczne połączenie (szyfrowanie)"
                         />
                     </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: -1.5, mb: 2 }}>
+                        Szyfruje połączenie z serwerem pocztowym (STARTTLS), żeby login i hasło nie leciały jawnym tekstem.
+                        Zostaw włączone — prawie każdy dostawca poczty (Gmail, Outlook, firmowa poczta) tego wymaga na porcie 587.
+                        Wyłącz tylko jeśli Twój serwer SMTP wyraźnie mówi, że działa bez szyfrowania.
+                    </Typography>
                     <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap", mb: 2 }}>
                         <TextField size="small" label="Użytkownik" sx={{ minWidth: 200 }}
                             value={smtpSettings.username}
@@ -594,136 +588,126 @@ const Settings = () => {
                 </SectionCard>
 
                 <SectionCard id="powiadomienia" icon={<NotificationsActiveIcon />} title="Powiadomienia">
-                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Grupy mailowe</Typography>
-                    {emailGroups.map(group => (
-                        <Box key={group.id} sx={{ mb: 2, p: 1.5, border: "1px solid #e0e0e0", borderRadius: 1 }}>
+                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Grupy powiadomień</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+                        Jedna grupa obsługuje oba kanały — każdy odbiorca może mieć adres e-mail i/lub numer telefonu.
+                    </Typography>
+                    <Box sx={{ display: "flex", gap: 1, mb: 2 }}>
+                        <TextField size="small" label="Nazwa nowej grupy" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddGroup()} />
+                        <Button variant="contained" size="small" onClick={handleAddGroup}>Dodaj nową grupę</Button>
+                    </Box>
+                    {groupStatus && <Alert severity={groupStatus.type} sx={{ mb: 2 }} onClose={() => setGroupStatus(null)}>{groupStatus.message}</Alert>}
+                    {groups.map((group, i) => {
+                        const color = GROUP_COLORS[i % GROUP_COLORS.length];
+                        return (
+                        <Box key={group.id} sx={{ mb: 2, p: 1.5, borderRadius: 1.5, borderLeft: `4px solid ${color}`, bgcolor: `${color}0d` }}>
                             <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                                <Typography fontWeight="bold">{group.name}</Typography>
-                                <IconButton size="small" onClick={() => handleDeleteEmailGroup(group.id)}>
+                                <Typography fontWeight="bold" sx={{ color }}>{group.name}</Typography>
+                                <IconButton size="small" onClick={() => handleDeleteGroup(group.id)}>
                                     <DeleteIcon fontSize="small" />
                                 </IconButton>
                             </Box>
                             <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1 }}>
                                 {group.recipients.map(r => (
-                                    <Chip key={r.id} label={r.email} onDelete={() => handleDeleteEmailRecipient(group.id, r.id)} size="small" />
+                                    <Chip
+                                        key={r.id}
+                                        label={[r.email, r.phone_number].filter(Boolean).join(" · ")}
+                                        onDelete={() => handleDeleteRecipient(group.id, r.id)}
+                                        size="small"
+                                    />
                                 ))}
                             </Box>
-                            <Box sx={{ display: "flex", gap: 1 }}>
+                            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
                                 <TextField
-                                    size="small" placeholder="adres@przyklad.pl"
-                                    value={newEmailByGroup[group.id] || ""}
-                                    onChange={e => setNewEmailByGroup(prev => ({ ...prev, [group.id]: e.target.value }))}
-                                    onKeyDown={e => e.key === "Enter" && handleAddEmailRecipient(group.id)}
+                                    size="small" placeholder="adres@przyklad.pl" label="E-mail"
+                                    value={newRecipientByGroup[group.id]?.email || ""}
+                                    onChange={e => setNewRecipientByGroup(prev => ({ ...prev, [group.id]: { ...prev[group.id], email: e.target.value } }))}
+                                    onKeyDown={e => e.key === "Enter" && handleAddRecipient(group.id)}
                                 />
-                                <Button size="small" variant="outlined" onClick={() => handleAddEmailRecipient(group.id)}>Dodaj adres</Button>
+                                <TextField
+                                    size="small" placeholder="+48123456789" label="Telefon"
+                                    value={newRecipientByGroup[group.id]?.phone || ""}
+                                    onChange={e => setNewRecipientByGroup(prev => ({ ...prev, [group.id]: { ...prev[group.id], phone: e.target.value } }))}
+                                    onKeyDown={e => e.key === "Enter" && handleAddRecipient(group.id)}
+                                />
+                                <Button size="small" variant="outlined" onClick={() => handleAddRecipient(group.id)}>Dodaj odbiorcę</Button>
                             </Box>
-                            <Accordion sx={{ mt: 1, boxShadow: "none", border: "1px solid #eee" }} disableGutters>
+                            <Accordion defaultExpanded sx={{ mt: 1, boxShadow: "none", border: "1px solid #eee" }} disableGutters>
                                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                    <Typography variant="caption">Harmonogram wysyłki (kiedy grupa aktywna)</Typography>
+                                    <Typography variant="caption">
+                                        Harmonogram wysyłki (kiedy grupa aktywna)
+                                        <InfoTip text="Alarm zawsze się loguje i włącza, niezależnie od tej siatki. Ale e-mail/SMS do tej grupy wyjdzie TYLKO w zaznaczonych (zielonych) godzinach. Jeśli zaznaczysz za mało pól, powiadomienia będą prawie zawsze wyciszone — dla większości przypadków zostaw „Zaznacz wszystko”." />
+                                    </Typography>
                                 </AccordionSummary>
                                 <AccordionDetails>
                                     <ScheduleEditor
                                         schedule={group.schedule}
-                                        onChange={s => handleUpdateEmailSchedule(group.id, s)}
+                                        onChange={s => handleUpdateGroupSchedule(group.id, s)}
                                     />
                                 </AccordionDetails>
                             </Accordion>
                         </Box>
-                    ))}
-                    <Box sx={{ display: "flex", gap: 1, mb: 3 }}>
-                        <TextField size="small" label="Nazwa nowej grupy mailowej" value={newEmailGroupName} onChange={e => setNewEmailGroupName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddEmailGroup()} />
-                        <Button variant="contained" size="small" onClick={handleAddEmailGroup}>Nowa grupa</Button>
-                    </Box>
-                    {emailGroupStatus && <Alert severity={emailGroupStatus.type} sx={{ mb: 3 }} onClose={() => setEmailGroupStatus(null)}>{emailGroupStatus.message}</Alert>}
+                        );
+                    })}
 
-                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Grupy SMS</Typography>
-                    {smsGroups.map(group => (
-                        <Box key={group.id} sx={{ mb: 2, p: 1.5, border: "1px solid #e0e0e0", borderRadius: 1 }}>
-                            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                                <Typography fontWeight="bold">{group.name}</Typography>
-                                <IconButton size="small" onClick={() => handleDeleteSmsGroup(group.id)}>
-                                    <DeleteIcon fontSize="small" />
-                                </IconButton>
-                            </Box>
-                            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1 }}>
-                                {group.recipients.map(r => (
-                                    <Chip key={r.id} label={r.phone_number} onDelete={() => handleDeleteSmsRecipient(group.id, r.id)} size="small" />
-                                ))}
-                            </Box>
-                            <Box sx={{ display: "flex", gap: 1 }}>
-                                <TextField
-                                    size="small" placeholder="+48123456789"
-                                    value={newPhoneByGroup[group.id] || ""}
-                                    onChange={e => setNewPhoneByGroup(prev => ({ ...prev, [group.id]: e.target.value }))}
-                                    onKeyDown={e => e.key === "Enter" && handleAddSmsRecipient(group.id)}
-                                />
-                                <Button size="small" variant="outlined" onClick={() => handleAddSmsRecipient(group.id)}>Dodaj numer</Button>
-                            </Box>
-                            <Accordion sx={{ mt: 1, boxShadow: "none", border: "1px solid #eee" }} disableGutters>
-                                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                                    <Typography variant="caption">Harmonogram wysyłki (kiedy grupa aktywna)</Typography>
-                                </AccordionSummary>
-                                <AccordionDetails>
-                                    <ScheduleEditor
-                                        schedule={group.schedule}
-                                        onChange={s => handleUpdateSmsSchedule(group.id, s)}
-                                    />
-                                </AccordionDetails>
-                            </Accordion>
-                        </Box>
-                    ))}
-                    <Box sx={{ display: "flex", gap: 1, mb: 3 }}>
-                        <TextField size="small" label="Nazwa nowej grupy SMS" value={newSmsGroupName} onChange={e => setNewSmsGroupName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddSmsGroup()} />
-                        <Button variant="contained" size="small" onClick={handleAddSmsGroup}>Nowa grupa</Button>
-                    </Box>
-                    {smsGroupStatus && <Alert severity={smsGroupStatus.type} sx={{ mb: 3 }} onClose={() => setSmsGroupStatus(null)}>{smsGroupStatus.message}</Alert>}
-
-                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1 }}>Reguły powiadomień</Typography>
-                    {rules.map(rule => (
-                        <Box key={rule.event_type} sx={{ py: 1, borderBottom: "1px solid #f0f0f0" }}>
+                    <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, mt: 3 }}>Reguły powiadomień</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1.5 }}>
+                        Jedna reguła na typ zdarzenia. Zaznacz kanał (E-mail/SMS), wybierz grupę odbiorców, i tyle — powiadomienie
+                        wyjdzie przy wykryciu zdarzenia, a kolejne dopiero po czasie z pola „Powtarzaj po” (żeby nie zasypać Cię
+                        wiadomościami). „Potwierdź alarm” na stronie czujnika wycisza powiadomienia do czasu powrotu do normy —
+                        to nie kasuje alarmu, tylko ucisza spam. Reszta pól niżej jest opcjonalna, najedź na <InfoOutlinedIcon sx={{ fontSize: 14, verticalAlign: "middle" }} /> po szczegóły.
+                    </Typography>
+                    {rules.map(rule => {
+                        const color = EVENT_TYPE_COLORS[rule.event_type] || "#666";
+                        const EventIcon = EVENT_TYPE_ICONS[rule.event_type];
+                        return (
+                        <Box key={rule.event_type} sx={{
+                            p: 1.5, mb: 1.5, borderRadius: 1.5,
+                            borderLeft: `4px solid ${color}`,
+                            bgcolor: `${color}0d`,
+                        }}>
                             <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap" }}>
-                                <Typography sx={{ minWidth: 130 }} fontWeight="bold">{EVENT_TYPE_LABELS[rule.event_type]}</Typography>
+                                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 190 }}>
+                                    {EventIcon && <EventIcon sx={{ color, fontSize: 20 }} />}
+                                    <Typography fontWeight="bold" sx={{ color }}>{EVENT_TYPE_LABELS[rule.event_type]}</Typography>
+                                </Box>
                                 <FormControlLabel
                                     control={<Checkbox checked={rule.email_enabled} onChange={e => updateRule(rule.event_type, { email_enabled: e.target.checked })} />}
                                     label="E-mail"
                                 />
-                                <Select size="small" displayEmpty sx={{ minWidth: 160 }}
-                                    value={rule.email_group_id ?? ""}
-                                    disabled={!rule.email_enabled}
-                                    onChange={e => updateRule(rule.event_type, { email_group_id: e.target.value === "" ? null : e.target.value })}
-                                >
-                                    <MenuItem value=""><em>Wybierz grupę</em></MenuItem>
-                                    {emailGroups.map(g => <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>)}
-                                </Select>
                                 <FormControlLabel
                                     control={<Checkbox checked={rule.sms_enabled} onChange={e => updateRule(rule.event_type, { sms_enabled: e.target.checked })} />}
                                     label="SMS"
                                 />
-                                <Select size="small" displayEmpty sx={{ minWidth: 160 }}
-                                    value={rule.sms_group_id ?? ""}
-                                    disabled={!rule.sms_enabled}
-                                    onChange={e => updateRule(rule.event_type, { sms_group_id: e.target.value === "" ? null : e.target.value })}
-                                >
-                                    <MenuItem value=""><em>Wybierz grupę</em></MenuItem>
-                                    {smsGroups.map(g => <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>)}
-                                </Select>
-                                <TextField
-                                    size="small" type="number" label="Powtarzaj po (min)"
-                                    sx={{ width: 150 }}
-                                    value={rule.notify_again_minutes ?? 30}
-                                    onChange={e => updateRule(rule.event_type, { notify_again_minutes: Number(e.target.value) })}
-                                />
+                                <Tooltip title="Do kogo lecą powiadomienia — e-mail do adresów, SMS do numerów zapisanych w tej grupie (patrz sekcja wyżej).">
+                                    <Select size="small" displayEmpty sx={{ minWidth: 160 }}
+                                        value={rule.group_id ?? ""}
+                                        disabled={!rule.email_enabled && !rule.sms_enabled}
+                                        onChange={e => updateRule(rule.event_type, { group_id: e.target.value === "" ? null : e.target.value })}
+                                    >
+                                        <MenuItem value=""><em>Wybierz grupę</em></MenuItem>
+                                        {groups.map(g => <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>)}
+                                    </Select>
+                                </Tooltip>
+                                <Tooltip title="Jak długo od ostatniego powiadomienia trzeba odczekać, zanim to samo zdarzenie znów wyśle e-mail/SMS. Chroni przed zalaniem skrzynki przy alarmie który trwa długo.">
+                                    <TextField
+                                        size="small" type="number" label="Powtarzaj po (min)"
+                                        sx={{ width: 150 }}
+                                        value={rule.notify_again_minutes ?? 30}
+                                        onChange={e => updateRule(rule.event_type, { notify_again_minutes: Number(e.target.value) })}
+                                    />
+                                </Tooltip>
                                 <FormControlLabel
                                     control={<Checkbox checked={rule.notify_on_return_enabled}
                                         onChange={e => updateRule(rule.event_type, { notify_on_return_enabled: e.target.checked })} />}
-                                    label="Powiadom o powrocie do normy"
+                                    label={<>Powiadom o powrocie do normy<InfoTip text="Dodatkowy, osobny e-mail/SMS wysyłany gdy czujnik SAM wróci do normy (bez klikania czegokolwiek). Bez tego dostajesz tylko powiadomienie o wystąpieniu alarmu." /></>}
                                 />
                             </Box>
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", pl: "146px", mt: 0.5 }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", pl: "214px", mt: 0.5 }}>
                                 <FormControlLabel
                                     control={<Checkbox checked={rule.sms_custom_enabled} disabled={!rule.sms_enabled}
                                         onChange={e => updateRule(rule.event_type, { sms_custom_enabled: e.target.checked })} />}
-                                    label="Własny tekst SMS"
+                                    label={<>Własny tekst SMS<InfoTip text="Bez tego SMS ma automatycznie wygenerowaną treść z opisem zdarzenia. Zaznacz i wpisz obok, żeby zawsze wysyłać dokładnie ten tekst." /></>}
                                 />
                                 <TextField
                                     size="small" label="Treść SMS" sx={{ minWidth: 280, flexGrow: 1 }}
@@ -732,11 +716,11 @@ const Settings = () => {
                                     onChange={e => updateRule(rule.event_type, { sms_custom_message: e.target.value })}
                                 />
                             </Box>
-                            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", pl: "146px", mt: 0.5 }}>
+                            <Box sx={{ display: "flex", alignItems: "center", gap: 2, flexWrap: "wrap", pl: "214px", mt: 0.5 }}>
                                 <FormControlLabel
                                     control={<Checkbox checked={rule.email_custom_subject_enabled} disabled={!rule.email_enabled}
                                         onChange={e => updateRule(rule.event_type, { email_custom_subject_enabled: e.target.checked })} />}
-                                    label="Własny temat e-mail"
+                                    label={<>Własny temat e-mail<InfoTip text="Bez tego temat maila alarmowego to automatyczne 'Alarm: ...'. Zaznacz i wpisz obok, żeby zawsze używać tego tematu." /></>}
                                 />
                                 <TextField
                                     size="small" label="Temat e-mail" sx={{ minWidth: 280, flexGrow: 1 }}
@@ -747,11 +731,12 @@ const Settings = () => {
                                 <FormControlLabel
                                     control={<Checkbox checked={rule.email_attach_camera} disabled={!rule.email_enabled}
                                         onChange={e => updateRule(rule.event_type, { email_attach_camera: e.target.checked })} />}
-                                    label="Załącz zdjęcie z kamery"
+                                    label={<>Załącz zdjęcie z kamery<InfoTip text="Do maila alarmowego dołączy się zdjęcie zrobione kamerą w momencie wysyłki." /></>}
                                 />
                             </Box>
                         </Box>
-                    ))}
+                        );
+                    })}
                     <Button variant="contained" color="success" sx={{ mt: 2 }} onClick={handleSaveRules}>Zapisz reguły</Button>
                     {rulesStatus && <Alert severity={rulesStatus.type} sx={{ mt: 2 }} onClose={() => setRulesStatus(null)}>{rulesStatus.message}</Alert>}
                 </SectionCard>

@@ -1,4 +1,4 @@
-from models import db, AlarmState, NotificationRule, EmailGroup
+from models import db, AlarmState, NotificationRule, NotificationGroup
 from sensors import Sensor
 
 
@@ -12,11 +12,11 @@ def _bare_sensor(app):
 def _seed_enabled_email_rule(app, event_type):
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = EmailGroup.add_group('IT')
-        EmailGroup.add_recipient(group.id, 'a@b.com')
+        group = NotificationGroup.add_group('IT')
+        NotificationGroup.add_recipient(group.id, email='a@b.com')
         rule = NotificationRule.query.filter_by(event_type=event_type).first()
         rule.email_enabled = True
-        rule.email_group_id = group.id
+        rule.group_id = group.id
         db.session.commit()
 
 

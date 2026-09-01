@@ -141,25 +141,62 @@ class Sensor:
 
     def _notify(self, event_type, desc):
         from datetime import datetime as dt
-        from models import db, NotificationRule, EmailGroup, SmsGroup, EmailRecipient, SmsRecipient, is_within_schedule
+        from models import db, NotificationRule, NotificationGroup, NotificationRecipient, is_within_schedule
         from notifications import send_email, send_sms
         with self.app.app_context():
             rule = NotificationRule.query.filter_by(event_type=event_type).first()
-            if not rule:
+            if not rule or not rule.group_id:
                 return
-            if rule.email_enabled and rule.email_group_id:
-                group = db.session.get(EmailGroup, rule.email_group_id)
-                if group and is_within_schedule(group.schedule, dt.now()):
-                    emails = [r.email for r in EmailRecipient.query.filter_by(group_id=rule.email_group_id).all()]
+            group = db.session.get(NotificationGroup, rule.group_id)
+            if not group or not is_within_schedule(group.schedule, dt.now()):
+                return
+            recipients = NotificationRecipient.query.filter_by(group_id=rule.group_id).all()
+            if rule.email_enabled:
+                emails = [r.email for r in recipients if r.email]
+                if emails:
                     subject = rule.email_custom_subject if (rule.email_custom_subject_enabled and rule.email_custom_subject) else f'Alarm: {desc}'
                     attachment = self.camera.capture_jpeg() if rule.email_attach_camera else None
                     send_email(emails, subject, desc, attachment_bytes=attachment)
-            if rule.sms_enabled and rule.sms_group_id:
-                group = db.session.get(SmsGroup, rule.sms_group_id)
-                if group and is_within_schedule(group.schedule, dt.now()):
-                    numbers = [r.phone_number for r in SmsRecipient.query.filter_by(group_id=rule.sms_group_id).all()]
+            if rule.sms_enabled:
+                numbers = [r.phone_number for r in recipients if r.phone_number]
+                if numbers:
                     sms_text = rule.sms_custom_message if (rule.sms_custom_enabled and rule.sms_custom_message) else desc
                     send_sms(numbers, sms_text)
+
+    def _clear_room_alarm(self, event_type, sensor_name, return_desc):
+        """Gdy odczyt sam wróci do normy — dezaktywuje alarm automatycznie
+        (patrz brainstorming: potwierdzenie ma tylko wyciszać powiadomienia,
+        a nie zastępować realny powrót do normy)."""
+        from models import AlarmState, Log
+        with self.app.app_context():
+            state = AlarmState.query.filter_by(event_type=event_type).first()
+            if not state or not state.active:
+                return
+            AlarmState.clear(event_type)
+            Log.add_log(datetime.now(), sensor_name, False, return_desc)
+        self._notify_return(event_type, return_desc)
+
+    def _notify_return(self, event_type, desc):
+        from datetime import datetime as dt
+        from models import db, NotificationRule, NotificationGroup, NotificationRecipient, is_within_schedule
+        from notifications import send_email, send_sms
+        with self.app.app_context():
+            rule = NotificationRule.query.filter_by(event_type=event_type).first()
+            if not rule or not rule.notify_on_return_enabled or not rule.group_id:
+                return
+            group = db.session.get(NotificationGroup, rule.group_id)
+            if not group or not is_within_schedule(group.schedule, dt.now()):
+                return
+            recipients = NotificationRecipient.query.filter_by(group_id=rule.group_id).all()
+            if rule.email_enabled:
+                emails = [r.email for r in recipients if r.email]
+                if emails:
+                    subject = rule.email_custom_subject if (rule.email_custom_subject_enabled and rule.email_custom_subject) else f'Powrót do normy: {desc}'
+                    send_email(emails, subject, desc)
+            if rule.sms_enabled:
+                numbers = [r.phone_number for r in recipients if r.phone_number]
+                if numbers:
+                    send_sms(numbers, desc)
 
     def _read_sensors(self):
         """Odczyt z hardware. Zastąp mockowane wartości prawdziwymi na RPi."""
@@ -251,14 +288,24 @@ class Sensor:
             time.sleep(1)
 
     def _check_thresholds(self):
-        if self.fire:
-            self._raise_alert('fire', 'Czujnik pożaru', True, 'Wykryto ogień!')
-        if self.gas:
-            self._raise_alert('gas', 'Czujnik gazu', True, 'Wykryto gaz/dym!')
-        if self.water:
-            self._raise_alert('water', 'Czujnik wody', True, 'Wykryto wodę!')
-        if self.door:
-            self._raise_alert('door', 'Czujnik drzwi', False, 'Otwarto drzwi')
-        if self.voltage_enabled and (self.voltage < self.min_voltage or self.voltage > self.max_voltage):
-            self._raise_alert('voltage', 'Napięcie zasilania', True,
-                               f'Napięcie poza normą: {self.voltage}V (próg {self.min_voltage}-{self.max_voltage}V)')
+        self._check_room_alarm('fire', self.fire, 'Czujnik pożaru', True,
+                                'Wykryto ogień!', 'Czujnik pożaru — powrót do normy')
+        self._check_room_alarm('gas', self.gas, 'Czujnik gazu', True,
+                                'Wykryto gaz/dym!', 'Czujnik gazu — powrót do normy')
+        self._check_room_alarm('water', self.water, 'Czujnik wody', True,
+                                'Wykryto wodę!', 'Czujnik wody — powrót do normy')
+        self._check_room_alarm('door', self.door, 'Czujnik drzwi', False,
+                                'Otwarto drzwi', 'Zamknięto drzwi')
+        if self.voltage_enabled:
+            voltage_out = self.voltage < self.min_voltage or self.voltage > self.max_voltage
+            self._check_room_alarm(
+                'voltage', voltage_out, 'Napięcie zasilania', True,
+                f'Napięcie poza normą: {self.voltage}V (próg {self.min_voltage}-{self.max_voltage}V)',
+                f'Napięcie zasilania wróciło do normy: {self.voltage}V',
+            )
+
+    def _check_room_alarm(self, event_type, condition, sensor_name, is_warning, trigger_desc, return_desc):
+        if condition:
+            self._raise_alert(event_type, sensor_name, is_warning, trigger_desc)
+        else:
+            self._clear_room_alarm(event_type, sensor_name, return_desc)

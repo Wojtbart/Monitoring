@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
+import { useRealTimeData } from "./RealTimeDataContext";
 import {
     Box, Typography, Button, TextField, Select, MenuItem,
     Chip, IconButton, Dialog, DialogTitle, DialogContent,
@@ -47,34 +48,7 @@ const wouldOverlap = (currentSlots, editUnit, height) => {
     );
 };
 
-const getStatus = (sensor, slot) => {
-    if (slot.type === "empty") return null;
-    if (sensor.fire || sensor.gas || sensor.water) return "critical";
-    if (sensor.temperature > 35 || sensor.temperature < 15 ||
-        sensor.humidity > 80 || sensor.humidity < 20) return "warning";
-    return "ok";
-};
-
-const STATUS_CONFIG = {
-    ok:       { color: "#4caf50", label: "OK",    glow: "0 0 6px #4caf50" },
-    warning:  { color: "#ff9800", label: "WARN",  glow: "0 0 6px #ff9800" },
-    critical: { color: "#f44336", label: "ALARM", glow: "0 0 8px #f44336" },
-};
-
-function LED({ status }) {
-    if (!status) return <Box sx={{ width: 36 }} />;
-    const cfg = STATUS_CONFIG[status];
-    return (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: cfg.color, boxShadow: cfg.glow }} />
-            <Typography sx={{ color: cfg.color, fontWeight: "bold", fontSize: "0.62rem", fontFamily: "monospace" }}>
-                {cfg.label}
-            </Typography>
-        </Box>
-    );
-}
-
-const COLS = "44px 70px 1fr 68px 68px 72px 64px 108px";
+const COLS = "44px 70px 1fr 72px 108px";
 
 const openManagement = address => {
     if (!address) return;
@@ -93,13 +67,12 @@ function RackHeader() {
     return (
         <Box sx={{ display: "grid", gridTemplateColumns: COLS, gap: 1, px: 2, py: 1, bgcolor: "#161b22", borderBottom: "1px solid #30363d" }}>
             {cell("UNIT")} {cell("TYP")} {cell("URZĄDZENIE")}
-            {cell("TEMP")} {cell("WILG")} {cell("PING")} {cell("STATUS")} <Box />
+            {cell("PING")} <Box />
         </Box>
     );
 }
 
-function RackSlot({ slot, sensor, onEdit, onDelete, pingState, onPing }) {
-    const status  = getStatus(sensor, slot);
+function RackSlot({ slot, onEdit, onDelete, pingState, onPing }) {
     const dtype   = DEVICE_TYPES[slot.type] || DEVICE_TYPES.empty;
     const isEmpty = slot.type === "empty";
 
@@ -127,12 +100,6 @@ function RackSlot({ slot, sensor, onEdit, onDelete, pingState, onPing }) {
             }}>
                 {slot.name || (isEmpty ? "— puste —" : "bez nazwy")}
             </Typography>
-            <Typography sx={{ color: isEmpty ? "#484f58" : "#ef5350", fontFamily: "monospace", fontSize: "0.72rem" }}>
-                {isEmpty ? "—" : `${sensor.temperature}°C`}
-            </Typography>
-            <Typography sx={{ color: isEmpty ? "#484f58" : "#42a5f5", fontFamily: "monospace", fontSize: "0.72rem" }}>
-                {isEmpty ? "—" : `${sensor.humidity}%`}
-            </Typography>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 <IconButton
                     size="small"
@@ -157,7 +124,6 @@ function RackSlot({ slot, sensor, onEdit, onDelete, pingState, onPing }) {
                     <Typography sx={{ color: "#f44336", fontSize: "0.62rem", fontFamily: "monospace", fontWeight: "bold" }}>BRAK</Typography>
                 )}
             </Box>
-            <LED status={status} />
 
             <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
                 <IconButton
@@ -211,15 +177,41 @@ export default function ServerRack() {
     const navigate   = useNavigate();
     const STORAGE_KEY = `rack_layout_${rackId}`;
     const rackNum     = (parseInt(rackId?.replace("A", "") ?? "0") + 1);
-    const rackLabel   = `Szafa ${rackNum}`;
+    const defaultRackLabel = `Szafa ${rackNum}`;
 
     const accessToken = localStorage.getItem("JWT");
     const [rackSize, setRackSize] = useState(42);
     const [slots, setSlots]       = useState(() => makeSlots(42));
-    const [sensor, setSensor]     = useState({
+    const [customName, setCustomName] = useState("");
+    const [editingName, setEditingName] = useState(false);
+    const [nameDraft, setNameDraft] = useState("");
+    const displayName = customName || defaultRackLabel;
+    // Czujnik pokoju — globalny poller we wspólnym kontekście (Layout.jsx w
+    // drzewie App.jsx), żeby ta strona nie dublowała /real-time-data osobno.
+    const sensor = {
         temperature: 0, humidity: 0,
         fire: false, gas: false, water: false, motion: false, door: false,
+        ...useRealTimeData(),
+    };
+    // Temperatura/wilgotność TEJ szafy — jeden czujnik na szafę (DeviceSensor),
+    // niezależny od globalnego czujnika pokoju powyżej. Banery/chipy dot.
+    // temp./wilg. na tej stronie muszą liczyć się z tego, nie z `sensor`.
+    const [deviceSensor, setDeviceSensor] = useState({
+        temperature: 0, humidity: 0,
+        alarm_active_temperature_non_critical: false, alarm_active_temperature_critical: false,
+        alarm_active_humidity_non_critical: false, alarm_active_humidity_critical: false,
     });
+    useEffect(() => {
+        const fetchDeviceSensor = async () => {
+            try {
+                const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}`);
+                setDeviceSensor(data);
+            } catch (_) {}
+        };
+        fetchDeviceSensor();
+        const iv = setInterval(fetchDeviceSensor, 5000);
+        return () => clearInterval(iv);
+    }, [rackId]);
     const [pingStatus, setPingStatus] = useState({});
     const [editSlot, setEditSlot]     = useState(null);
     const [editName, setEditName]     = useState("");
@@ -229,20 +221,27 @@ export default function ServerRack() {
     const [editError, setEditError]   = useState("");
     const [saving, setSaving]     = useState(false);
     const [savedAt, setSavedAt]   = useState(null);
+    const [autoSave, setAutoSave] = useState(false);
+    const layoutLoadedRef = useRef(false);
+    const autoSaveTimerRef = useRef(null);
 
     useEffect(() => {
-        const fetch = async () => {
-            try { const { data } = await axios.get(`${API_BASE}/real-time-data`); setSensor(data); }
-            catch (_) {}
-        };
-        fetch();
-        const iv = setInterval(fetch, 5000);
-        return () => clearInterval(iv);
+        axios.get(`${API_BASE}/settings`)
+            .then(({ data }) => setAutoSave(!!data.settings?.[0]?.auto_save_layout))
+            .catch(() => {});
     }, []);
 
     useEffect(() => {
+        layoutLoadedRef.current = false;
+        const markLoaded = () => {
+            // Odroczone do osobnego ticku — żeby efekt debounce'a auto-zapisu
+            // (poniżej) zdążył zobaczyć layoutLoadedRef=false przy TEJ zmianie
+            // stanu (wczytanie z serwera), a nie potraktował jej jako edycję
+            // użytkownika do zapisania.
+            setTimeout(() => { layoutLoadedRef.current = true; }, 0);
+        };
         const id = localStorage.getItem(STORAGE_KEY);
-        if (!id) return;
+        if (!id) { markLoaded(); return; }
         axios.get(`${API_BASE}/layouts/${id}`)
             .then(({ data }) => {
                 if (data.type !== "rack" || data.rackId !== rackId) {
@@ -256,8 +255,10 @@ export default function ServerRack() {
                 const size = data.rackSize || data.slots?.length || 42;
                 setRackSize(size);
                 setSlots(makeSlots(size, data.slots || []));
+                if (data.name) setCustomName(data.name);
             })
-            .catch(() => {});
+            .catch(() => {})
+            .finally(markLoaded);
     }, [rackId]);
 
     const handleRackSizeChange = newSize => {
@@ -267,7 +268,7 @@ export default function ServerRack() {
 
     const saveLayout = async () => {
         setSaving(true);
-        const payload = { type: "rack", rackId, rackSize, slots };
+        const payload = { type: "rack", rackId, rackSize, slots, name: customName || undefined };
         const headers = { Authorization: `Bearer ${accessToken}` };
         try {
             const id = localStorage.getItem(STORAGE_KEY);
@@ -282,6 +283,25 @@ export default function ServerRack() {
             setSavedAt(new Date());
         } catch (_) { alert("Błąd zapisu konfiguracji szafy"); }
         setSaving(false);
+    };
+
+    useEffect(() => {
+        if (!autoSave || !layoutLoadedRef.current) return;
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = setTimeout(() => { saveLayout(); }, 1500);
+        return () => clearTimeout(autoSaveTimerRef.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoSave, rackSize, slots, customName]);
+
+    const startEditingName = () => {
+        setNameDraft(customName || defaultRackLabel);
+        setEditingName(true);
+    };
+
+    const confirmEditingName = () => {
+        const trimmed = nameDraft.trim();
+        setCustomName(trimmed);
+        setEditingName(false);
     };
 
     const openEdit = slot => {
@@ -334,8 +354,11 @@ export default function ServerRack() {
         }
     };
 
+    const deviceAlarmCritical = deviceSensor.alarm_active_temperature_critical || deviceSensor.alarm_active_humidity_critical;
+    const deviceAlarmActive   = deviceAlarmCritical
+        || deviceSensor.alarm_active_temperature_non_critical || deviceSensor.alarm_active_humidity_non_critical;
     const criticalAlert = sensor.fire || sensor.gas || sensor.water;
-    const warnAlert     = !criticalAlert && (sensor.temperature > 35 || sensor.temperature < 15);
+    const warnAlert     = !criticalAlert && deviceAlarmActive;
     const activeDevices = slots.filter(s => s.type !== "empty").length;
 
     return (
@@ -345,9 +368,8 @@ export default function ServerRack() {
                     <RackVisual3D
                         slots={slots}
                         rackSize={rackSize}
-                        rackLabel={rackLabel}
+                        rackLabel={displayName}
                         width={190}
-                        onUnitClick={(unit, type) => navigate(`/rack/${rackId}/unit/${unit}/sensor/${type}`)}
                     />
                     <Typography variant="caption" sx={{ display: "block", mt: 0.75, textAlign: "center", color: "text.secondary" }}>
                         Widok wizualny serwera
@@ -357,13 +379,28 @@ export default function ServerRack() {
                 {/* Header */}
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <IconButton size="small" onClick={() => navigate("/rzut")}>
+                        <IconButton size="small" onClick={() => navigate("/floor-plan")}>
                             <ArrowBackIcon fontSize="small" />
                         </IconButton>
                         <Box>
-                            <Typography variant="h5" fontWeight="bold" sx={{ color: "#1a1a2e" }}>
-                                {rackLabel}
-                            </Typography>
+                            {editingName ? (
+                                <TextField
+                                    size="small" autoFocus value={nameDraft}
+                                    onChange={e => setNameDraft(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === "Enter") confirmEditingName();
+                                        if (e.key === "Escape") setEditingName(false);
+                                    }}
+                                    onBlur={confirmEditingName}
+                                    sx={{ "& input": { fontSize: "1.5rem", fontWeight: "bold", py: 0.5 } }}
+                                />
+                            ) : (
+                                <Typography variant="h5" fontWeight="bold"
+                                    sx={{ color: "#1a1a2e", cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
+                                    onClick={startEditingName} title="Kliknij, żeby zmienić nazwę">
+                                    {displayName}
+                                </Typography>
+                            )}
                             <Typography variant="caption" color="text.secondary">
                                 {activeDevices}/{rackSize}U zajęte · odświeżanie co 5s
                             </Typography>
@@ -377,6 +414,7 @@ export default function ServerRack() {
                                 {RACK_PRESETS.map(u => <MenuItem key={u} value={u}>{u}U</MenuItem>)}
                             </Select>
                         </FormControl>
+                        {autoSave && <Chip size="small" variant="outlined" color="success" label="Auto-zapis" />}
                         {savedAt && (
                             <Typography variant="caption" color="text.secondary">
                                 Zapisano {savedAt.toLocaleTimeString()}
@@ -398,16 +436,17 @@ export default function ServerRack() {
                     </Alert>
                 )}
                 {warnAlert && (
-                    <Alert severity="warning" sx={{ mb: 1.5 }}>
-                        Temperatura poza zakresem: {sensor.temperature}°C
+                    <Alert severity={deviceAlarmCritical ? "error" : "warning"} sx={{ mb: 1.5 }}>
+                        {deviceAlarmCritical ? "ALARM KRYTYCZNY — " : ""}
+                        Temperatura/wilgotność tej szafy poza zakresem: {deviceSensor.temperature}°C / {deviceSensor.humidity}%
                     </Alert>
                 )}
 
                 {/* Sensor bar */}
                 <Box sx={{ display: "flex", gap: 1.5, mb: 2, px: 2, py: 1.25, bgcolor: "#1a1a2e", borderRadius: 1.5, flexWrap: "wrap" }}>
-                    <Chip icon={<ThermostatIcon />} label={`${sensor.temperature}°C`} size="small"
+                    <Chip icon={<ThermostatIcon />} label={`${deviceSensor.temperature}°C`} size="small"
                         sx={{ bgcolor: "#c62828", color: "white", fontWeight: "bold" }} />
-                    <Chip icon={<WaterDropIcon />} label={`${sensor.humidity}%`} size="small"
+                    <Chip icon={<WaterDropIcon />} label={`${deviceSensor.humidity}%`} size="small"
                         sx={{ bgcolor: "#1565c0", color: "white", fontWeight: "bold" }} />
                     {sensor.motion && <Chip label="Ruch" size="small" color="warning" />}
                     {sensor.door   && <Chip label="Drzwi otwarte" size="small" color="warning" />}
@@ -423,12 +462,12 @@ export default function ServerRack() {
                             <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "#ffca28" }} />
                             <Box sx={{ width: 10, height: 10, borderRadius: "50%", bgcolor: "#66bb6a" }} />
                             <Typography sx={{ ml: 1, color: "#8b949e", fontSize: "0.7rem", fontFamily: "monospace" }}>
-                                {rackLabel.toUpperCase()} — {rackSize}U
+                                {displayName.toUpperCase()} — {rackSize}U
                             </Typography>
                         </Box>
                         <RackHeader />
                         {slots.map(slot => (
-                            <RackSlot key={slot.unit} slot={slot} sensor={sensor}
+                            <RackSlot key={slot.unit} slot={slot}
                                 onEdit={openEdit} onDelete={deleteSlot}
                                 pingState={pingStatus[slot.unit]} onPing={handlePing} />
                         ))}

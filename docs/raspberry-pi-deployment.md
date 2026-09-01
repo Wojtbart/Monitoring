@@ -262,14 +262,130 @@ przez `wsgi.py`) utworzy ją sama, nic nie trzeba robić ręcznie.
 
 `voltage_thresholds` już istnieje z danymi na produkcyjnej bazie — `create_all()` NIE
 doda do niej nowej kolumny (patrz gotcha w CLAUDE.md). Przed restartem backendu dodaj
-kolumnę ręcznie:
+kolumnę ręcznie (Pi domyślnie nie ma CLI `sqlite3` — użyj modułu Pythona):
 
 ```bash
-sqlite3 /home/rpi/Monitoring/back/instance/monitoring.db \
-  "ALTER TABLE voltage_thresholds ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1;"
+python3 -c "
+import sqlite3
+conn = sqlite3.connect('/home/rpi/Monitoring/back/instance/monitoring.db')
+conn.execute('ALTER TABLE voltage_thresholds ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1;')
+conn.commit()
+conn.close()
+print('OK')
+"
 ```
 
 Dopiero potem `sudo systemctl restart monitoring-backend`.
+
+## 7k. Migracja: potwierdzanie alarmu zamiast kasowania
+
+Wszystkie alarmy (pożar/gaz/woda/drzwi/napięcie/temp.-wilg. w szafach) mają teraz
+kolumnę `acknowledged` — przycisk "Potwierdź alarm" tylko wycisza powiadomienia,
+alarm dezaktywuje się sam dopiero po realnym powrocie do normy. `alarm_states` i
+`device_alarm_states` już istnieją z danymi — dodaj kolumnę ręcznie przed restartem:
+
+```bash
+python3 -c "
+import sqlite3
+conn = sqlite3.connect('/home/rpi/Monitoring/back/instance/monitoring.db')
+conn.execute('ALTER TABLE alarm_states ADD COLUMN acknowledged BOOLEAN NOT NULL DEFAULT 0;')
+conn.execute('ALTER TABLE device_alarm_states ADD COLUMN acknowledged BOOLEAN NOT NULL DEFAULT 0;')
+conn.commit()
+conn.close()
+print('OK')
+"
+sudo systemctl restart monitoring-backend
+```
+
+## 7l. Migracja: automatyczny zapis układu (rzut/szafa)
+
+Nowa kolumna `auto_save_layout` w `settings` (checkbox w Ustawieniach → "Automatyczny
+zapis układu"). `settings` już istnieje z danymi — dodaj kolumnę ręcznie:
+
+```bash
+python3 -c "
+import sqlite3
+conn = sqlite3.connect('/home/rpi/Monitoring/back/instance/monitoring.db')
+conn.execute('ALTER TABLE settings ADD COLUMN auto_save_layout BOOLEAN NOT NULL DEFAULT 0;')
+conn.commit()
+conn.close()
+print('OK')
+"
+sudo systemctl restart monitoring-backend
+```
+
+## 7m. Migracja: wspólne grupy powiadomień (e-mail + SMS w jednej grupie)
+
+Dawne osobne grupy mailowe i SMS (`email_groups`/`sms_groups`) zostały zastąpione
+jedną tabelą `notification_groups` (+ `notification_recipients`, gdzie każdy
+odbiorca ma opcjonalnie e-mail i/lub telefon). `notification_rules` dostało
+nowe pole `group_id` zamiast `email_group_id`/`sms_group_id`.
+
+**Kolejność jest ważna** — najpierw schemat, potem migracja danych, potem restart:
+
+```bash
+# 1) nowe tabele (notification_groups, notification_recipients) — tworzy sama
+python3 -c "
+from app import app, db
+with app.app_context():
+    db.create_all()
+print('OK')
+"
+
+# 2) nowa kolumna w istniejącej tabeli notification_rules
+python3 -c "
+import sqlite3
+conn = sqlite3.connect('/home/rpi/Monitoring/back/instance/monitoring.db')
+conn.execute('ALTER TABLE notification_rules ADD COLUMN group_id INTEGER;')
+conn.commit()
+conn.close()
+print('OK')
+"
+
+# 3) migracja danych: scala grupę mailową i SMS w jedną, jeśli obie były
+#    przypięte do tej samej reguły (patrz nagłówek pliku dla pełnej polityki)
+cd /home/rpi/Monitoring/back
+python3 migrations/merge_notification_groups.py
+
+sudo systemctl restart monitoring-backend
+```
+
+Stare tabele (`email_groups`, `email_recipients`, `sms_groups`, `sms_recipients`)
+zostają w bazie nietknięte, tylko przestają być używane (jak wcześniej
+`phone_numbers` — patrz README "Znane ograniczenia"). Po restarcie sprawdź
+w Ustawieniach → Powiadomienia, czy grupy i reguły wyglądają poprawnie —
+w razie potrzeby popraw ręcznie w UI (np. nazwę scalonej grupy).
+
+## 7n. Migracja: jeden czujnik temp./wilg. na szafę (zamiast per-urządzenie)
+
+Kolumna `unit` (numer slotu) została usunięta z `device_sensors`,
+`device_sensor_history` i `device_alarm_states` — fizycznie w szafie stoi
+jeden czujnik środowiskowy, nie jeden na serwer. To NIE jest dodanie
+kolumny (jak migracje 7j–7m), tylko usunięcie — `db.create_all()` sam z
+siebie nie zmieni istniejącego schematu, więc stare tabele trzeba
+zdropować i dać im powstać na nowo z aktualnych modeli:
+
+```bash
+sudo systemctl stop monitoring-backend
+cd /home/rpi/Monitoring/back
+python3 -c "
+from app import app, db
+with app.app_context():
+    db.session.execute(db.text('DROP TABLE IF EXISTS device_sensors'))
+    db.session.execute(db.text('DROP TABLE IF EXISTS device_sensor_history'))
+    db.session.execute(db.text('DROP TABLE IF EXISTS device_alarm_states'))
+    db.session.commit()
+    db.create_all()
+print('OK')
+"
+sudo systemctl start monitoring-backend
+```
+
+**Kasuje** dotychczasowe progi/historię/aktywne alarmy temperatury i
+wilgotności per-slot w szafach (napięcie zasilania, użytkownicy i
+pozostałe ustawienia nietknięte) — po restarcie każda szafa startuje z
+jednym świeżym czujnikiem na domyślnych progach, do ustawienia ponownie
+w Ustawieniach/na stronie czujnika danej szafy.
 
 ## 8. Weryfikacja
 

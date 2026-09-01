@@ -4,9 +4,16 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
-import { Box, Button, Typography, Paper, Chip, IconButton } from "@mui/material";
+import { useRealTimeData } from "./RealTimeDataContext";
+import {
+    Box, Button, Typography, Paper, Chip, IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
+    Dialog, DialogTitle, DialogContent, DialogActions, TextField, Tooltip,
+} from "@mui/material";
 import WarningAmberIcon from "@mui/icons-material/WarningAmber";
 import SaveIcon from "@mui/icons-material/Save";
+import SettingsIcon from "@mui/icons-material/Settings";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 
 const FLOORPLAN_KEY = "floorplan_persp_id";
 
@@ -69,38 +76,35 @@ const ALL_RACKS = [
     { id: "A3", cx:  2.8, z: ROW_Z },
 ];
 
-const ICONS = { fire: "🔥", gas: "💨", water: "💧", motion: "👁", door: "🚪", temp: "🌡️" };
+const ICONS = { fire: "🔥", gas: "💨", water: "💧", motion: "👁", door: "🚪", temp: "🌡️", humidity: "💧" };
 
-// Wysokość montażu (wy) danego typu czujnika — sufit dla pożaru/gazu,
-// podłoga dla zalania, wysokość ściany dla ruchu. Przy upuszczeniu nowego
-// czujnika liczymy X i głębokość z punktu kliknięcia NA TEJ płaszczyźnie —
-// dzięki temu można go postawić w dowolnym miejscu pokoju (nie tylko na
-// jednej ustalonej "smudze" głębokości).
-const SENSOR_TYPE_MOUNT_HEIGHT = { fire: ROOM.H - 0.02, gas: ROOM.H - 0.02, water: 0.05, motion: ROOM.H - 1.3 };
+// Wysokość montażu (wy) wg wybranego wariantu — sufit, ściana (wysokość
+// oczu) albo podłoga. Przy upuszczeniu nowego czujnika liczymy X i
+// głębokość z punktu kliknięcia NA TEJ płaszczyźnie — dzięki temu można go
+// postawić w dowolnym miejscu pokoju (nie tylko na jednej ustalonej
+// "smudze" głębokości).
+const MOUNT_HEIGHT = { ceiling: ROOM.H - 0.02, wall: ROOM.H - 1.3, floor: 0.05 };
 
-// Typy czujników dostępne do ręcznego dodania z paska nad rzutem — mocowanie
-// (floor/wy) odzwierciedla konwencję domyślnych czujników danego typu.
-const ADDABLE_SENSOR_TYPES = ["fire", "gas", "water", "motion"];
+// Warianty czujników dostępne do ręcznego dodania z paska nad rzutem —
+// pożar/gaz/ruch mają wariant sufitowy i ścienny, zalanie tylko podłogowy.
 const SENSOR_TYPE_LABELS = { fire: "Pożar", gas: "Gaz/Dym", water: "Zalanie", motion: "Ruch" };
-const SENSOR_TYPE_MOUNT = {
-    fire: {},
-    gas: {},
-    water: { floor: true },
-    motion: { wy: ROOM.H - 1.3 },
-};
+const MOUNT_LABELS = { ceiling: "sufit", wall: "ściana", floor: "podłoga" };
+const MOUNT_GLYPH = { ceiling: "⌃", wall: "▯", floor: "" };
+// Grupowane po typie (nie po pojedynczej opcji) — żeby w pasku dało się od
+// razu ogarnąć wzrokiem "to jest pożar, ma 2 warianty", zamiast siedmiu
+// identycznie wyglądających ikonek pod rząd.
+const ADDABLE_SENSOR_GROUPS = [
+    { type: "fire", mounts: ["ceiling", "wall"] },
+    { type: "gas", mounts: ["ceiling", "wall"] },
+    { type: "motion", mounts: ["ceiling", "wall"] },
+    { type: "water", mounts: ["floor"] },
+];
 
 // Czujniki podłogowe (zalanie) zawsze stoją na podłodze — pion ignorowany.
 const effectiveSensorWy = def => def.floor ? 0.05 : (def.wy ?? ROOM.H - 0.02);
 
-// Regulacja wysokości po zaznaczeniu (klik) — osobno od przeciągania
-// (X/głębokość), żeby mysz o 2 wymiarach nie musiała sterować 3 naraz.
-const HEIGHT_STEP = 0.15;
-const MIN_WY = 0.15;
-const MAX_WY = ROOM.H - 0.05;
-const CLICK_MOVE_THRESHOLD = 4; // px ekranu — powyżej tego to już drag, nie klik
-
 // ─── RackBox ──────────────────────────────────────────────────────────────────
-function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, active, onTogglePower }) {
+function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, active, onTogglePower, onContextMenuRequest, onTempClick, onHumidityClick }) {
     const [hover, setHover] = useState(false);
     const { cx, z } = rack;
     const x0 = cx - RACK_W / 2, x1 = cx + RACK_W / 2;
@@ -116,13 +120,18 @@ function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, acti
     const btr = proj(x1, RACK_H, z1);
 
     const bdr    = hover ? "#5a9abf" : (alert ? C.rackBdrA : active ? C.rackBdr : "#2a3a45");
-    const tColor = !temp ? C.tempOk : temp > 35 ? C.tempErr : temp > 30 ? C.tempWrn : C.tempOk;
+    const tColor = temp == null ? C.tempOk : temp > 35 ? C.tempErr : temp > 30 ? C.tempWrn : C.tempOk;
+    const hColor = C.textBr;
     const pw     = Math.abs(ftr.x - ftl.x);
     const nUnits = 8;
 
-    const smX = (ftl.x + ftr.x) / 2;
     const smY = ftl.y + (fbl.y - ftl.y) * 0.5;
-    const sR  = Math.max(4, pw * 0.22);
+    const sR  = Math.max(3.5, pw * 0.17);
+    // Temp/wilg. pod sobą (nie obok siebie) — obok siebie na wąskiej szafie
+    // podpisy ("22.1°C"/"31.3%") zlepiały się w jeden nieczytelny napis.
+    const smX     = (ftl.x + ftr.x) / 2;
+    const smYTemp = smY - sR * 1.3 - 5;
+    const smYHum  = smYTemp + sR * 2 + 10;
 
     const pwBtnX = fbl.x + 5;
     const pwBtnY = fbl.y - 6;
@@ -135,6 +144,11 @@ function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, acti
             onMouseDown={e => { e.cancelBubble = true; onDragStart && onDragStart(e); }}
             onMouseEnter={e => { setHover(true); e.target.getStage().container().style.cursor = "grab"; }}
             onMouseLeave={e => { setHover(false); e.target.getStage().container().style.cursor = "default"; }}
+            onContextMenu={e => {
+                e.evt.preventDefault();
+                e.cancelBubble = true;
+                onContextMenuRequest && onContextMenuRequest(e, rack);
+            }}
         >
             {/* Top face */}
             <Line closed points={pts([ftl, ftr, btr, btl])}
@@ -168,22 +182,43 @@ function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, acti
             <Circle x={ftr.x - 8} y={ftr.y + 3} radius={1.8}
                 fill={active ? C.rackAmb : "#263238"} shadowColor={active ? C.rackAmb : "transparent"} shadowBlur={3} shadowOpacity={0.7} />
 
-            {/* Temp/humidity sensor icon (only when active) */}
+            {/* Temperatura i wilgotność szafy — dwa osobne, klikalne przyciski
+                (jeden czujnik na całą szafę, nie per-urządzenie) prowadzące
+                na stronę tego czujnika. */}
             {active && (
                 <>
-                    <Circle x={smX} y={smY} radius={sR}
-                        fill={C.sensorBg} stroke={tColor} strokeWidth={1}
-                        shadowColor={tColor} shadowBlur={3} shadowOpacity={0.5} />
-                    <Text text={ICONS.temp} x={smX - sR} y={smY - sR + 1}
-                        width={sR * 2} align="center" fontSize={Math.max(5, sR * 1.1)} />
-                    {temp != null && (
-                        <Text text={`${temp}°C`} x={smX - 12} y={smY + sR + 2}
-                            width={24} align="center" fontSize={5} fill={tColor} fontStyle="bold" />
-                    )}
-                    {humidity != null && (
-                        <Text text={`${humidity}%`} x={smX - 12} y={smY + sR + 8}
-                            width={24} align="center" fontSize={5} fill={C.textBr} fontStyle="bold" />
-                    )}
+                    <Group
+                        onMouseDown={e => e.cancelBubble = true}
+                        onClick={e => { e.cancelBubble = true; onTempClick && onTempClick(); }}
+                        onMouseEnter={e => { e.target.getStage().container().style.cursor = "pointer"; }}
+                        onMouseLeave={e => { e.target.getStage().container().style.cursor = "grab"; }}
+                    >
+                        <Circle x={smX} y={smYTemp} radius={sR}
+                            fill={C.sensorBg} stroke={tColor} strokeWidth={1}
+                            shadowColor={tColor} shadowBlur={3} shadowOpacity={0.5} />
+                        <Text text={ICONS.temp} x={smX - sR} y={smYTemp - sR + 1}
+                            width={sR * 2} align="center" fontSize={Math.max(5, sR * 1.1)} />
+                        {temp != null && (
+                            <Text text={`${temp}°C`} x={smX - 12} y={smYTemp + sR + 2}
+                                width={24} align="center" fontSize={5} fill={tColor} fontStyle="bold" />
+                        )}
+                    </Group>
+                    <Group
+                        onMouseDown={e => e.cancelBubble = true}
+                        onClick={e => { e.cancelBubble = true; onHumidityClick && onHumidityClick(); }}
+                        onMouseEnter={e => { e.target.getStage().container().style.cursor = "pointer"; }}
+                        onMouseLeave={e => { e.target.getStage().container().style.cursor = "grab"; }}
+                    >
+                        <Circle x={smX} y={smYHum} radius={sR}
+                            fill={C.sensorBg} stroke={hColor} strokeWidth={1}
+                            shadowColor={hColor} shadowBlur={3} shadowOpacity={0.5} />
+                        <Text text={ICONS.humidity} x={smX - sR} y={smYHum - sR + 1}
+                            width={sR * 2} align="center" fontSize={Math.max(5, sR * 1.1)} />
+                        {humidity != null && (
+                            <Text text={`${humidity}%`} x={smX - 12} y={smYHum + sR + 2}
+                                width={24} align="center" fontSize={5} fill={hColor} fontStyle="bold" />
+                        )}
+                    </Group>
                 </>
             )}
 
@@ -214,7 +249,7 @@ function RackBox({ rack, proj, alert, temp, humidity, onClick, onDragStart, acti
 }
 
 // ─── Sensor (domyślny lub dodany, oba przeciągalne) ────────────────────────────
-function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick, selected, onRaise, onLower }) {
+function Sensor({ def, proj, alert, onDragStart, deletable, onContextMenuRequest }) {
     const wy = effectiveSensorWy(def);
     const sp = proj(def.wx, wy, def.wz);
     const color = alert ? C.sensorE : C.sensorOk;
@@ -222,16 +257,15 @@ function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick
     const hasLine = def.wy === undefined;
     const lineEndY = def.floor ? sp.y - 6 : sp.y + 6;
     const labelY = def.floor ? sp.y - R - 10 : sp.y + R + 2;
-    const canAdjustHeight = !def.floor;
     return (
         <Group
             onMouseDown={e => { e.cancelBubble = true; onDragStart && onDragStart(e); }}
-            onDblClick={onDblClick}
             onMouseEnter={e => { e.target.getStage().container().style.cursor = "grab"; }}
             onMouseLeave={e => { e.target.getStage().container().style.cursor = "default"; }}
             onContextMenu={e => {
                 e.evt.preventDefault();
-                if (deletable) onDelete && onDelete(def.id);
+                e.cancelBubble = true;
+                if (deletable) onContextMenuRequest && onContextMenuRequest(e, def);
             }}
         >
             {hasLine && (
@@ -239,9 +273,6 @@ function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick
                     stroke={color} strokeWidth={0.8} dash={[2, 2]} />
             )}
             {alert && <Circle x={sp.x} y={sp.y} radius={R + 4} fill={color} opacity={0.2} />}
-            {selected && (
-                <Circle x={sp.x} y={sp.y} radius={R + 2.5} stroke="#58a6ff" strokeWidth={1} dash={[1.5, 1.5]} />
-            )}
             <Circle x={sp.x} y={sp.y} radius={R}
                 fill={C.sensorBg} stroke={color} strokeWidth={1.2}
                 shadowColor={color} shadowBlur={alert ? 8 : 3} shadowOpacity={0.7} />
@@ -251,28 +282,6 @@ function Sensor({ def, proj, alert, onDragStart, deletable, onDelete, onDblClick
                 <Text text={def.label} x={sp.x - 20} y={labelY}
                     width={40} align="center" fontSize={5}
                     fill={color} fontStyle="bold" />
-            )}
-            {selected && canAdjustHeight && (
-                <Group x={sp.x + R + 5} y={sp.y}>
-                    <Group
-                        onMouseDown={e => { e.cancelBubble = true; }}
-                        onClick={e => { e.cancelBubble = true; onRaise && onRaise(); }}
-                        onMouseEnter={e => { e.target.getStage().container().style.cursor = "pointer"; }}
-                        onMouseLeave={e => { e.target.getStage().container().style.cursor = "grab"; }}
-                    >
-                        <Circle x={0} y={-7} radius={6} fill="#1a1a2e" stroke="#58a6ff" strokeWidth={1} />
-                        <Text text="▲" x={-6} y={-11} width={12} align="center" fontSize={7} fill="#58a6ff" />
-                    </Group>
-                    <Group
-                        onMouseDown={e => { e.cancelBubble = true; }}
-                        onClick={e => { e.cancelBubble = true; onLower && onLower(); }}
-                        onMouseEnter={e => { e.target.getStage().container().style.cursor = "pointer"; }}
-                        onMouseLeave={e => { e.target.getStage().container().style.cursor = "grab"; }}
-                    >
-                        <Circle x={0} y={7} radius={6} fill="#1a1a2e" stroke="#58a6ff" strokeWidth={1} />
-                        <Text text="▼" x={-6} y={3} width={12} align="center" fontSize={7} fill="#58a6ff" />
-                    </Group>
-                </Group>
             )}
         </Group>
     );
@@ -289,20 +298,28 @@ export default function FloorPlan() {
         w: window.innerWidth,
         h: Math.max(window.innerHeight - 170, 300),
     });
-    const [sd, setSd]           = useState({});
+    const sd = useRealTimeData();
+    const [deviceReadings, setDeviceReadings] = useState({}); // { [rackId]: { temperature, humidity } }
     const [alarmStates, setAlarmStates] = useState({});
     const [pendingSensor, setPendingSensor] = useState(null);
+    const [sensorContextMenu, setSensorContextMenu] = useState(null); // { x, y, sensor }
+    const [rackContextMenu, setRackContextMenu] = useState(null); // { x, y, rack }
+    const [rackNames, setRackNames] = useState({}); // { [rackId]: nazwa niestandardowa }
+    const [renameDialog, setRenameDialog] = useState(null); // { rackId, draft }
     const [rackXPos, setRackXPos] = useState(() =>
         Object.fromEntries(ALL_RACKS.map(r => [r.id, r.cx]))
     );
     const [rackActive, setRackActive] = useState(() =>
         Object.fromEntries(ALL_RACKS.map(r => [r.id, true]))
     );
+    const [rackRemoved, setRackRemoved] = useState({}); // { [rackId]: true } — szafa fizycznie usunięta z rzutu
     const [customSensors, setCustomSensors] = useState([]);
-    const [selectedSensorId, setSelectedSensorId] = useState(null);
     const [saving, setSaving]   = useState(false);
     const [savedAt, setSavedAt] = useState(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [autoSave, setAutoSave] = useState(false);
+    const layoutLoadedRef = useRef(false);
+    const autoSaveTimerRef = useRef(null);
 
     useEffect(() => {
         const el = containerRef.current;
@@ -319,13 +336,17 @@ export default function FloorPlan() {
         return () => ro.disconnect();
     }, []);
 
+    // Temperatura/wilgotność KAŻDEJ szafy — jeden czujnik na całą szafę (nie
+    // per-urządzenie), więc dociągamy je wszystkie osobno z /device-sensors.
     useEffect(() => {
-        const fetch = async () => {
-            try { const { data } = await axios.get(`${API_BASE}/real-time-data`); setSd(data); }
-            catch (_) {}
+        const fetchDeviceReadings = async () => {
+            const results = await Promise.all(ALL_RACKS.map(r =>
+                axios.get(`${API_BASE}/device-sensors/${r.id}`).then(({ data }) => [r.id, data]).catch(() => [r.id, null])
+            ));
+            setDeviceReadings(Object.fromEntries(results.filter(([, data]) => data)));
         };
-        fetch();
-        const iv = setInterval(fetch, 5000);
+        fetchDeviceReadings();
+        const iv = setInterval(fetchDeviceReadings, 5000);
         return () => clearInterval(iv);
     }, []);
 
@@ -342,8 +363,21 @@ export default function FloorPlan() {
     }, []);
 
     useEffect(() => {
+        axios.get(`${API_BASE}/settings`)
+            .then(({ data }) => setAutoSave(!!data.settings?.[0]?.auto_save_layout))
+            .catch(() => {});
+    }, []);
+
+    useEffect(() => {
+        const markLoaded = () => {
+            // Odroczone do osobnego ticku — żeby efekt debounce'a auto-zapisu
+            // (poniżej) zdążył zobaczyć layoutLoadedRef=false przy TEJ zmianie
+            // stanu (wczytanie z serwera), a nie potraktował jej jako edycję
+            // użytkownika do zapisania.
+            setTimeout(() => { layoutLoadedRef.current = true; }, 0);
+        };
         const id = localStorage.getItem(FLOORPLAN_KEY);
-        if (!id) return;
+        if (!id) { markLoaded(); return; }
         axios.get(`${API_BASE}/layouts/${id}`)
             .then(({ data }) => {
                 if (data.type !== "floorplan_persp") {
@@ -367,15 +401,42 @@ export default function FloorPlan() {
                     setRackXPos(data.rackXPos);
                 }
                 if (data.rackActive) setRackActive(data.rackActive);
+                if (data.rackRemoved) setRackRemoved(data.rackRemoved);
                 if (data.customSensors) setCustomSensors(data.customSensors);
             })
-            .catch(() => {});
+            .catch(() => {})
+            .finally(markLoaded);
     }, []);
+
+    // Niestandardowe nazwy szaf (ustawione tu albo na stronie szafy) — każda
+    // szafa ma WŁASNY zapisany layout (rack_layout_<rackId> w localStorage,
+    // ta sama konwencja co ServerRack.jsx), więc trzeba je doczytać osobno.
+    useEffect(() => {
+        ALL_RACKS.forEach(r => {
+            const id = localStorage.getItem(`rack_layout_${r.id}`);
+            if (!id) return;
+            axios.get(`${API_BASE}/layouts/${id}`)
+                .then(({ data }) => {
+                    if (data.type === "rack" && data.rackId === r.id && data.name) {
+                        setRackNames(prev => ({ ...prev, [r.id]: data.name }));
+                    }
+                })
+                .catch(() => {});
+        });
+    }, []);
+
+    useEffect(() => {
+        if (!autoSave || !layoutLoadedRef.current) return;
+        if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = setTimeout(() => { saveLayout(); }, 1500);
+        return () => clearTimeout(autoSaveTimerRef.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoSave, rackXPos, rackActive, rackRemoved, customSensors]);
 
     const saveLayout = async () => {
         setSaving(true);
         const tok = localStorage.getItem("JWT");
-        const payload = { type: "floorplan_persp", rackXPos, rackActive, customSensors };
+        const payload = { type: "floorplan_persp", rackXPos, rackActive, rackRemoved, customSensors };
         const headers = { Authorization: `Bearer ${tok}` };
         try {
             const id = localStorage.getItem(FLOORPLAN_KEY);
@@ -442,7 +503,6 @@ export default function FloorPlan() {
     const handleSensorDragStart = (e, sensor) => {
         dragRef.current = {
             kind: "sensor", id: sensor.id, planeWy: effectiveSensorWy(sensor),
-            moved: false, startClientX: e.evt.clientX, startClientY: e.evt.clientY,
         };
         setIsDragging(true);
     };
@@ -460,9 +520,7 @@ export default function FloorPlan() {
             const newCx = Math.max(-ROOM.W / 2 + RACK_W, Math.min(ROOM.W / 2 - RACK_W, startWorldX + dx));
             setRackXPos(prev => ({ ...prev, [id]: newCx }));
         } else {
-            const { planeWy, startClientX, startClientY } = dragRef.current;
-            const moveDist = Math.hypot(e.evt.clientX - startClientX, e.evt.clientY - startClientY);
-            if (moveDist > CLICK_MOVE_THRESHOLD) dragRef.current.moved = true;
+            const { planeWy } = dragRef.current;
             const { wx: rawWx, wz } = stageToWorldOnPlane(stageX, stageY, planeWy);
             const newWx = Math.max(-ROOM.W / 2 + 0.02, Math.min(ROOM.W / 2 - 0.02, rawWx));
             setCustomSensors(prev => prev.map(s => s.id === id ? { ...s, wx: newWx, wz } : s));
@@ -470,40 +528,80 @@ export default function FloorPlan() {
     };
 
     const handleMouseUp = () => {
-        if (dragRef.current?.kind === "sensor" && !dragRef.current.moved) {
-            // Klik bez przeciągnięcia — zaznacz/odznacz czujnik (regulacja
-            // wysokości strzałkami ▲▼), nie licz tego jako zmianę pozycji.
-            const id = dragRef.current.id;
-            setSelectedSensorId(prev => prev === id ? null : id);
-        }
         dragRef.current = null;
         setIsDragging(false);
     };
 
-    const adjustSensorHeight = (id, delta) => {
-        setCustomSensors(prev => prev.map(s => {
-            if (s.id !== id || s.floor) return s;
-            const current = effectiveSensorWy(s);
-            const next = Math.max(MIN_WY, Math.min(MAX_WY, current + delta));
-            return { ...s, wy: next };
-        }));
-    };
-
     const toggleRackPower = id => setRackActive(prev => ({ ...prev, [id]: !prev[id] }));
 
-    const addSensor = (type, wx, wz) => {
+    const addSensor = (type, mount, wx, wz) => {
         const id = `custom-${type}-${Date.now()}`;
-        const mount = SENSOR_TYPE_MOUNT[type] || {};
+        const isFloor = mount === "floor";
         setCustomSensors(prev => [...prev, {
             id, type, wx, wz,
-            wy: mount.floor ? undefined : SENSOR_TYPE_MOUNT_HEIGHT[type],
+            wy: isFloor ? undefined : MOUNT_HEIGHT[mount],
             label: SENSOR_TYPE_LABELS[type],
-            ...(mount.floor ? { floor: true } : {}),
+            ...(isFloor ? { floor: true } : {}),
         }]);
     };
 
     const deleteCustomSensor = id =>
         setCustomSensors(prev => prev.filter(s => s.id !== id));
+
+    const configureSensor = s =>
+        navigate(s.type === "motion" ? "/settings#powiadomienia" : "/room-sensor/" + s.type);
+
+    const handleSensorContextMenu = (e, sensor) => {
+        setSensorContextMenu({ x: e.evt.clientX, y: e.evt.clientY, sensor });
+    };
+
+    const handleRackContextMenu = (e, rack) => {
+        setRackContextMenu({ x: e.evt.clientX, y: e.evt.clientY, rack });
+    };
+
+    const openRenameDialog = rack => {
+        setRenameDialog({ rackId: rack.id, draft: rackNames[rack.id] || rack.label });
+    };
+
+    // Lista szaf jest stała w kodzie (A0-A5), więc "usuń" nie kasuje danych,
+    // tylko chowa szafę z rzutu (fizycznie zdemontowana) — cofalne przyciskiem
+    // "Przywróć szafy" w pasku, dopóki nie zostanie nadpisane innym zapisem.
+    const removeRack = rackId => {
+        setRackRemoved(prev => ({ ...prev, [rackId]: true }));
+        setRackContextMenu(null);
+    };
+    const restoreRacks = () => setRackRemoved({});
+
+    // Każda szafa ma własny zapisany layout (rack_layout_<rackId>, ta sama
+    // konwencja co ServerRack.jsx) — jeśli już istnieje, dopisujemy do niego
+    // samą nazwę bez ruszania reszty (rozmiar/sloty); jeśli nie ma jeszcze
+    // żadnego zapisu dla tej szafy, tworzymy minimalny.
+    const renameRack = async (rackId, name) => {
+        const key = `rack_layout_${rackId}`;
+        const existingId = localStorage.getItem(key);
+        const token = localStorage.getItem("JWT");
+        const headers = { Authorization: `Bearer ${token}` };
+        try {
+            if (existingId) {
+                const { data } = await axios.get(`${API_BASE}/layouts/${existingId}`);
+                if (data.type === "rack" && data.rackId === rackId) {
+                    await axios.put(`${API_BASE}/layouts/${existingId}`, { ...data, name }, { headers });
+                    setRackNames(prev => ({ ...prev, [rackId]: name }));
+                    return;
+                }
+            }
+            const { data } = await axios.post(
+                `${API_BASE}/layouts`,
+                { type: "rack", rackId, rackSize: 42, slots: [], name },
+                { headers },
+            );
+            localStorage.setItem(key, data.id);
+            setRackNames(prev => ({ ...prev, [rackId]: name }));
+        } catch (_) {
+            alert("Błąd zapisu nazwy szafy");
+        }
+    };
+
 
     // Przeciąganie nowego czujnika z paska ikonek na scenę — trzymaj ikonkę,
     // przesuń kursor nad rzut, puść żeby postawić czujnik dokładnie tam.
@@ -519,10 +617,10 @@ export default function FloorPlan() {
             if (inside) {
                 const stageX = (e.clientX - rect.left - fixX) / fixedScale;
                 const stageY = (e.clientY - rect.top - fixY) / fixedScale;
-                const mountHeight = SENSOR_TYPE_MOUNT_HEIGHT[pendingSensor.type];
+                const mountHeight = MOUNT_HEIGHT[pendingSensor.mount];
                 const { wx: rawWx, wz } = stageToWorldOnPlane(stageX, stageY, mountHeight);
                 const wx = Math.max(-ROOM.W / 2 + 0.02, Math.min(ROOM.W / 2 - 0.02, rawWx));
-                addSensor(pendingSensor.type, wx, wz);
+                addSensor(pendingSensor.type, pendingSensor.mount, wx, wz);
             }
             setPendingSensor(null);
         };
@@ -532,12 +630,13 @@ export default function FloorPlan() {
             window.removeEventListener("mousemove", handleMove);
             window.removeEventListener("mouseup", handleUp);
         };
-    }, [pendingSensor?.type]);
+    }, [pendingSensor?.type, pendingSensor?.mount]);
 
     const effectiveRacks = ALL_RACKS
+        .filter(r => !rackRemoved[r.id])
         .map(r => ({ ...r, cx: rackXPos[r.id] ?? r.cx }))
         .sort((a, b) => a.cx - b.cx)
-        .map((r, i) => ({ ...r, label: `Szafa ${i + 1}` }));
+        .map((r, i) => ({ ...r, label: rackNames[r.id] || `Szafa ${i + 1}` }));
 
     // ── Room geometry ──────────────────────────────────────────────────────────
     const ffl = proj(-ROOM.W / 2, 0,      0);
@@ -595,7 +694,7 @@ export default function FloorPlan() {
                     position: "fixed", left: pendingSensor.clientX - 14, top: pendingSensor.clientY - 14,
                     fontSize: "1.75rem", pointerEvents: "none", zIndex: 2000, opacity: 0.85,
                 }}>
-                    {ICONS[pendingSensor.type]}
+                    {ICONS[pendingSensor.type]}{MOUNT_GLYPH[pendingSensor.mount]}
                 </Box>
             )}
 
@@ -616,6 +715,11 @@ export default function FloorPlan() {
                         <Chip size="small"
                             label={doorOpen ? "Drzwi OTWARTE" : "Drzwi zamknięte"}
                             color={doorOpen ? "error" : "success"} variant="outlined" />
+                        {autoSave && <Chip size="small" variant="outlined" color="success" label="Auto-zapis" />}
+                        {Object.values(rackRemoved).some(Boolean) && (
+                            <Chip size="small" variant="outlined" onClick={restoreRacks}
+                                label={`Przywróć usunięte szafy (${Object.values(rackRemoved).filter(Boolean).length})`} />
+                        )}
                         {savedAt && (
                             <Typography variant="caption" color="text.secondary">
                                 Zapisano {savedAt.toLocaleTimeString()}
@@ -633,21 +737,33 @@ export default function FloorPlan() {
                         <Typography variant="caption" color="text.secondary">
                             Dodaj czujnik:
                         </Typography>
-                        <Box sx={{ display: "flex", gap: 0.25 }}>
-                            {ADDABLE_SENSOR_TYPES.map(type => (
-                                <IconButton key={type} size="small"
-                                    onMouseDown={e => setPendingSensor({ type, clientX: e.clientX, clientY: e.clientY })}
-                                    title={`Przytrzymaj i przeciągnij na rzut: ${SENSOR_TYPE_LABELS[type]}`}
-                                    sx={{ fontSize: "1rem", p: 0.5, cursor: "grab" }}>
-                                    {ICONS[type]}
-                                </IconButton>
+                        <Box sx={{ display: "flex", gap: 1 }}>
+                            {ADDABLE_SENSOR_GROUPS.map(({ type, mounts }) => (
+                                <Box key={type} sx={{
+                                    display: "flex", alignItems: "center", gap: 0.5,
+                                    border: "1px solid #ddd", borderRadius: 1.5, px: 0.75, py: 0.25,
+                                }}>
+                                    <Typography sx={{ fontSize: "1rem", lineHeight: 1 }}>{ICONS[type]}</Typography>
+                                    <Typography variant="caption" fontWeight="bold" color="text.secondary">
+                                        {SENSOR_TYPE_LABELS[type]}
+                                    </Typography>
+                                    {mounts.map(mount => (
+                                        <Tooltip key={mount} title={`Przytrzymaj i przeciągnij na rzut: ${SENSOR_TYPE_LABELS[type]} (${MOUNT_LABELS[mount]})`}>
+                                            <Chip
+                                                size="small"
+                                                label={MOUNT_LABELS[mount]}
+                                                onMouseDown={e => setPendingSensor({ type, mount, clientX: e.clientX, clientY: e.clientY })}
+                                                sx={{ height: 20, fontSize: "0.65rem", cursor: "grab" }}
+                                            />
+                                        </Tooltip>
+                                    ))}
+                                </Box>
                             ))}
                         </Box>
                         <Box sx={{ flex: 1 }} />
                         <Chip size="small" variant="outlined" label="🖱️ Przeciągnij = przesuń" />
-                        <Chip size="small" variant="outlined" label="Klik czujnik = wysokość ▲▼" />
                         <Chip size="small" variant="outlined" label="2×klik szafa = edycja" />
-                        <Chip size="small" variant="outlined" label="PPM czujnik = usuń" />
+                        <Chip size="small" variant="outlined" label="PPM czujnik = menu" />
                     </Box>
                 </Paper>
 
@@ -655,7 +771,7 @@ export default function FloorPlan() {
                 <Box ref={containerRef} sx={{ flex: 1, overflow: "hidden", bgcolor: C.bg }}>
                     <Stage ref={stageRef} width={W} height={H}
                         x={fixX} y={fixY} scaleX={fixedScale} scaleY={fixedScale}
-                        onMouseDown={e => { if (e.target === e.target.getStage()) setSelectedSensorId(null); }}
+                        onContextMenu={e => { e.evt.preventDefault(); setSensorContextMenu(null); setRackContextMenu(null); }}
                         onMouseMove={handleMouseMove}
                         onMouseUp={handleMouseUp}
                         onMouseLeave={handleMouseUp}>
@@ -705,23 +821,25 @@ export default function FloorPlan() {
                             {/* Racks (single row) */}
                             {effectiveRacks.map(rack => (
                                 <RackBox key={rack.id} rack={rack} proj={proj}
-                                    alert={rackAlert} temp={sd.temperature} humidity={sd.humidity}
+                                    alert={rackAlert}
+                                    temp={deviceReadings[rack.id]?.temperature}
+                                    humidity={deviceReadings[rack.id]?.humidity}
                                     onClick={() => navigate("/rack/" + rack.id)}
                                     onDragStart={e => handleRackDragStart(e, rack)}
                                     active={rackActive[rack.id] !== false}
-                                    onTogglePower={toggleRackPower} />
+                                    onTogglePower={toggleRackPower}
+                                    onContextMenuRequest={handleRackContextMenu}
+                                    onTempClick={() => navigate(`/rack/${rack.id}/sensor/temperature`)}
+                                    onHumidityClick={() => navigate(`/rack/${rack.id}/sensor/humidity`)} />
                             ))}
 
-                            {/* Czujniki (przesuwalne + usuwalne prawym klikiem) — rysowane
-                                NAD szafami, żeby przeciągnięty czujnik nigdy nie znikał za rackiem */}
+                            {/* Czujniki (przesuwalne + prawy klik = menu kontekstowe) —
+                                rysowane NAD szafami, żeby przeciągnięty czujnik nigdy nie
+                                znikał za rackiem */}
                             {customSensors.map(s => (
                                 <Sensor key={s.id} def={s} proj={proj} alert={getAlert(s.type)}
                                     onDragStart={e => handleSensorDragStart(e, s)}
-                                    onDblClick={() => s.type === "motion" ? navigate("/settings#powiadomienia") : navigate("/room-sensor/" + s.type)}
-                                    deletable onDelete={deleteCustomSensor}
-                                    selected={selectedSensorId === s.id}
-                                    onRaise={() => adjustSensorHeight(s.id, HEIGHT_STEP)}
-                                    onLower={() => adjustSensorHeight(s.id, -HEIGHT_STEP)} />
+                                    deletable onContextMenuRequest={handleSensorContextMenu} />
                             ))}
 
                             {/* Door sensor circle */}
@@ -746,6 +864,68 @@ export default function FloorPlan() {
                     </Stage>
                 </Box>
             </Box>
+
+            <Menu
+                open={!!sensorContextMenu}
+                onClose={() => setSensorContextMenu(null)}
+                anchorReference="anchorPosition"
+                anchorPosition={sensorContextMenu ? { top: sensorContextMenu.y, left: sensorContextMenu.x } : undefined}
+            >
+                <MenuItem onClick={() => { configureSensor(sensorContextMenu.sensor); setSensorContextMenu(null); }}>
+                    <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon>
+                    <ListItemText>Konfiguruj</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => { deleteCustomSensor(sensorContextMenu.sensor.id); setSensorContextMenu(null); }}>
+                    <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+                    <ListItemText sx={{ color: "error.main" }}>Usuń</ListItemText>
+                </MenuItem>
+            </Menu>
+
+            <Menu
+                open={!!rackContextMenu}
+                onClose={() => setRackContextMenu(null)}
+                anchorReference="anchorPosition"
+                anchorPosition={rackContextMenu ? { top: rackContextMenu.y, left: rackContextMenu.x } : undefined}
+            >
+                <MenuItem onClick={() => { openRenameDialog(rackContextMenu.rack); setRackContextMenu(null); }}>
+                    <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+                    <ListItemText>Zmień nazwę</ListItemText>
+                </MenuItem>
+                <MenuItem onClick={() => removeRack(rackContextMenu.rack.id)}>
+                    <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+                    <ListItemText sx={{ color: "error.main" }}>Usuń</ListItemText>
+                </MenuItem>
+            </Menu>
+
+            <Dialog open={!!renameDialog} onClose={() => setRenameDialog(null)} maxWidth="xs" fullWidth>
+                <DialogTitle>Zmień nazwę szafy</DialogTitle>
+                <DialogContent>
+                    <TextField
+                        autoFocus fullWidth margin="dense" label="Nazwa"
+                        value={renameDialog?.draft || ""}
+                        onChange={e => setRenameDialog(prev => ({ ...prev, draft: e.target.value }))}
+                        onKeyDown={e => {
+                            if (e.key === "Enter" && renameDialog?.draft.trim()) {
+                                renameRack(renameDialog.rackId, renameDialog.draft.trim());
+                                setRenameDialog(null);
+                            }
+                        }}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setRenameDialog(null)}>Anuluj</Button>
+                    <Button
+                        variant="contained"
+                        disabled={!renameDialog?.draft.trim()}
+                        onClick={() => {
+                            renameRack(renameDialog.rackId, renameDialog.draft.trim());
+                            setRenameDialog(null);
+                        }}
+                    >
+                        Zapisz
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Layout>
     );
 }

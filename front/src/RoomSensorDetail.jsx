@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
+import { useRealTimeData } from "./RealTimeDataContext";
 import { Box, Typography, IconButton, Button, Alert } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import LocalFireDepartmentIcon from "@mui/icons-material/LocalFireDepartment";
@@ -24,22 +25,21 @@ export default function RoomSensorDetail() {
     const cfg = TYPE_CONFIG[type] || TYPE_CONFIG.fire;
     const Icon = cfg.icon;
 
-    const [liveValue, setLiveValue] = useState(null);
+    const realTimeData = useRealTimeData();
+    const liveValue = realTimeData[type] ?? null;
     const [active, setActive] = useState(false);
+    const [acknowledged, setAcknowledged] = useState(false);
     const [lastTriggeredAt, setLastTriggeredAt] = useState(null);
     const [status, setStatus] = useState(null);
 
     useEffect(() => {
         const fetchState = async () => {
             try {
-                const [rtRes, alarmRes] = await Promise.all([
-                    axios.get(`${API_BASE}/real-time-data`),
-                    axios.get(`${API_BASE}/alarm-states`),
-                ]);
-                setLiveValue(rtRes.data[type]);
-                const state = alarmRes.data.states.find(s => s.event_type === type);
+                const { data: alarmData } = await axios.get(`${API_BASE}/alarm-states`);
+                const state = alarmData.states.find(s => s.event_type === type);
                 if (state) {
                     setActive(state.active);
+                    setAcknowledged(state.acknowledged);
                     setLastTriggeredAt(state.last_triggered_at);
                 }
             } catch (_) {}
@@ -61,15 +61,15 @@ export default function RoomSensorDetail() {
         setTimeout(() => setStatus(null), 3000);
     };
 
-    const handleClear = async () => {
+    const handleAcknowledge = async () => {
         try {
-            await axios.delete(`${API_BASE}/sensors/${type}/clear`, {
+            await axios.delete(`${API_BASE}/sensors/${type}/acknowledge`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
-            setActive(false);
-            setStatus({ type: "success", message: "Alarm skasowany." });
+            setAcknowledged(true);
+            setStatus({ type: "success", message: "Alarm potwierdzony." });
         } catch (error) {
-            setStatus({ type: "error", message: error.response?.data?.message || "Błąd kasowania alarmu." });
+            setStatus({ type: "error", message: error.response?.data?.message || "Błąd potwierdzania alarmu." });
         }
         setTimeout(() => setStatus(null), 2500);
     };
@@ -78,7 +78,7 @@ export default function RoomSensorDetail() {
         <Layout>
             <Box sx={{ p: 2, maxWidth: 700, mx: "auto" }}>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-                    <IconButton size="small" onClick={() => navigate("/rzut")}>
+                    <IconButton size="small" onClick={() => navigate("/floor-plan")}>
                         <ArrowBackIcon fontSize="small" />
                     </IconButton>
                     <Typography variant="h5" fontWeight="bold" sx={{ color: "#1a1a2e" }}>
@@ -98,11 +98,17 @@ export default function RoomSensorDetail() {
 
                 <Box sx={{
                     p: 2, mb: 2, borderRadius: 1.5,
-                    bgcolor: active ? "#fdecea" : "#eaf6ec",
-                    border: active ? "1px solid #e53935" : "1px solid #2e7d32",
+                    bgcolor: !active ? "#eaf6ec" : acknowledged ? "#fff8e1" : "#fdecea",
+                    border: !active ? "1px solid #2e7d32" : acknowledged ? "1px solid #f9a825" : "1px solid #e53935",
                 }}>
-                    <Typography variant="h6" fontWeight="bold" sx={{ color: active ? "#c62828" : "#2e7d32" }}>
-                        {active ? "ALARM — wymaga skasowania" : "Brak alarmu"}
+                    <Typography variant="h6" fontWeight="bold" sx={{
+                        color: !active ? "#2e7d32" : acknowledged ? "#8a6d00" : "#c62828",
+                    }}>
+                        {!active
+                            ? "Brak alarmu"
+                            : acknowledged
+                                ? "Potwierdzony — czeka na powrót do normy"
+                                : "ALARM — wymaga potwierdzenia"}
                     </Typography>
                     {lastTriggeredAt && (
                         <Typography variant="caption" color="text.secondary">
@@ -115,8 +121,8 @@ export default function RoomSensorDetail() {
                     <Button variant="outlined" onClick={handleSimulate}>
                         Symuluj alarm (test)
                     </Button>
-                    <Button variant="contained" color="error" onClick={handleClear} disabled={!active}>
-                        Skasuj alarm
+                    <Button variant="contained" color="error" onClick={handleAcknowledge} disabled={!active || acknowledged}>
+                        Potwierdź alarm
                     </Button>
                 </Box>
 
@@ -126,8 +132,14 @@ export default function RoomSensorDetail() {
                     </Alert>
                 )}
 
-                <Typography variant="body2">
-                    <a href="/settings#powiadomienia">Skonfiguruj powiadomienia dla tego zdarzenia →</a>
+                <Typography
+                    variant="body2" onClick={() => navigate("/settings#powiadomienia")}
+                    sx={{
+                        color: "#1565c0", fontWeight: "bold", cursor: "pointer", display: "inline-block",
+                        "&:hover": { textDecoration: "underline" },
+                    }}
+                >
+                    Skonfiguruj powiadomienia dla tego zdarzenia →
                 </Typography>
             </Box>
         </Layout>

@@ -1,6 +1,6 @@
 from werkzeug.security import generate_password_hash
 from models import (
-    db, User, Setting, NotificationRule, EmailGroup, SmsGroup,
+    db, User, Setting, NotificationRule, NotificationGroup, NotificationRecipient,
     DeviceSensor, VoltageThreshold, SmtpSettings,
 )
 from datetime import time as dtime
@@ -41,23 +41,23 @@ def test_restore_rejects_invalid_payload(client, app):
     assert resp.status_code == 400
 
 
-def test_restore_roundtrip_email_groups_and_rules(client, app):
+def test_restore_roundtrip_notification_groups_and_rules(client, app):
     token = _login(client, app)
     headers = {'Authorization': f'Bearer {token}'}
     with app.app_context():
         NotificationRule.seed_defaults()
-        group = EmailGroup.add_group('IT')
+        group = NotificationGroup.add_group('IT')
         group_id = group.id
-        EmailGroup.add_recipient(group_id, 'a@b.com')
+        NotificationGroup.add_recipient(group_id, email='a@b.com')
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         rule.email_enabled = True
-        rule.email_group_id = group_id
+        rule.group_id = group_id
         db.session.commit()
 
     backup = client.get('/config-backup', headers=headers).get_json()
 
     with app.app_context():
-        EmailGroup.delete_group(group_id)
+        NotificationGroup.delete_group(group_id)
         NotificationRule.query.filter_by(event_type='fire').first().email_enabled = False
         db.session.commit()
 
@@ -65,20 +65,19 @@ def test_restore_roundtrip_email_groups_and_rules(client, app):
     assert resp.status_code == 200
 
     with app.app_context():
-        restored_group = EmailGroup.query.filter_by(name='IT').first()
+        restored_group = NotificationGroup.query.filter_by(name='IT').first()
         assert restored_group is not None
-        from models import EmailRecipient
-        emails = [r.email for r in EmailRecipient.query.filter_by(group_id=restored_group.id).all()]
+        emails = [r.email for r in NotificationRecipient.query.filter_by(group_id=restored_group.id).all()]
         assert emails == ['a@b.com']
         rule = NotificationRule.query.filter_by(event_type='fire').first()
         assert rule.email_enabled is True
-        assert rule.email_group_id == restored_group.id
+        assert rule.group_id == restored_group.id
 
 
 def test_restore_device_thresholds_only_for_existing_devices(client, app):
     token = _login(client, app)
     headers = {'Authorization': f'Bearer {token}'}
-    client.get('/device-sensors/A0/1')
+    client.get('/device-sensors/A0')
     backup = client.get('/config-backup', headers=headers).get_json()
     backup['device_sensor_thresholds'][0]['min_temperature'] = 1.0
     backup['device_sensor_thresholds'][0]['max_temperature'] = 2.0
@@ -88,7 +87,7 @@ def test_restore_device_thresholds_only_for_existing_devices(client, app):
     resp = client.post('/config-backup/restore', json=backup, headers=headers)
     assert resp.status_code == 200
 
-    data = client.get('/device-sensors/A0/1').get_json()
+    data = client.get('/device-sensors/A0').get_json()
     assert data['min_temperature'] == 1.0
     assert data['max_temperature'] == 2.0
 

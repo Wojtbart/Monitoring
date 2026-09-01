@@ -42,16 +42,16 @@ def test_get_device_sensors_when_disabled_no_existing_row_returns_disabled_only(
     client.put('/device-sensor-settings', json={'enabled': False},
                headers={'Authorization': f'Bearer {token}'})
 
-    resp = client.get('/device-sensors/A0/1')
+    resp = client.get('/device-sensors/A0')
     assert resp.status_code == 200
     assert resp.get_json() == {'enabled': False}
 
     with app.app_context():
-        assert DeviceSensor.get_existing('A0', 1) is None
+        assert DeviceSensor.get_existing('A0') is None
 
 
 def test_get_device_sensors_when_disabled_freezes_existing_reading(client, app):
-    resp = client.get('/device-sensors/A0/1')
+    resp = client.get('/device-sensors/A0')
     assert resp.status_code == 200
     first = resp.get_json()
     assert first['enabled'] is True
@@ -60,7 +60,7 @@ def test_get_device_sensors_when_disabled_freezes_existing_reading(client, app):
     client.put('/device-sensor-settings', json={'enabled': False},
                headers={'Authorization': f'Bearer {token}'})
 
-    resp2 = client.get('/device-sensors/A0/1')
+    resp2 = client.get('/device-sensors/A0')
     assert resp2.status_code == 200
     second = resp2.get_json()
     assert second['enabled'] is False
@@ -69,6 +69,6 @@ def test_get_device_sensors_when_disabled_freezes_existing_reading(client, app):
 
 
 def test_get_device_sensors_when_enabled_still_regenerates(client):
-    resp = client.get('/device-sensors/A0/1')
+    resp = client.get('/device-sensors/A0')
     assert resp.status_code == 200
     assert resp.get_json()['enabled'] is True

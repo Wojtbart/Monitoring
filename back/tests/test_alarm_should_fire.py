@@ -3,9 +3,10 @@ from models import alarm_should_fire
 
 
 class _FakeState:
-    def __init__(self, active, last_triggered_at):
+    def __init__(self, active, last_triggered_at, acknowledged=False):
         self.active = active
         self.last_triggered_at = last_triggered_at
+        self.acknowledged = acknowledged
 
 
 def test_fires_when_no_state():
@@ -34,4 +35,14 @@ def test_fires_after_window_elapsed():
 
 def test_force_always_fires():
     state = _FakeState(active=True, last_triggered_at=datetime.now())
+    assert alarm_should_fire(state, 30, force=True) is True
+
+
+def test_does_not_fire_when_acknowledged_even_after_window():
+    state = _FakeState(active=True, last_triggered_at=datetime.now() - timedelta(minutes=31), acknowledged=True)
+    assert alarm_should_fire(state, 30) is False
+
+
+def test_force_fires_even_when_acknowledged():
+    state = _FakeState(active=True, last_triggered_at=datetime.now(), acknowledged=True)
     assert alarm_should_fire(state, 30, force=True) is True

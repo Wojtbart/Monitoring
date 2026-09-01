@@ -54,28 +54,29 @@ def test_simulate_sets_alarm_active(client, app, monkeypatch):
     assert water['active'] is True
 
 
-def test_clear_requires_auth(client, app):
+def test_acknowledge_requires_auth(client, app):
     _seed(app)
-    resp = client.delete('/sensors/fire/clear')
+    resp = client.delete('/sensors/fire/acknowledge')
     assert resp.status_code == 401
 
 
-def test_clear_rejects_unknown_type(client, app):
+def test_acknowledge_rejects_unknown_type(client, app):
     _seed(app)
     token = _login(client, app)
-    resp = client.delete('/sensors/unknown/clear', headers={'Authorization': f'Bearer {token}'})
+    resp = client.delete('/sensors/unknown/acknowledge', headers={'Authorization': f'Bearer {token}'})
     assert resp.status_code == 400
 
 
-def test_clear_sets_alarm_inactive(client, app):
+def test_acknowledge_marks_acknowledged_but_stays_active(client, app):
     _seed(app)
     token = _login(client, app)
     with app.app_context():
         AlarmState.trigger('door')
 
-    resp = client.delete('/sensors/door/clear', headers={'Authorization': f'Bearer {token}'})
+    resp = client.delete('/sensors/door/acknowledge', headers={'Authorization': f'Bearer {token}'})
     assert resp.status_code == 200
 
     states = client.get('/alarm-states').get_json()['states']
     door = next(s for s in states if s['event_type'] == 'door')
-    assert door['active'] is False
+    assert door['active'] is True
+    assert door['acknowledged'] is True

@@ -19,7 +19,7 @@ FULL_PAYLOAD = {
 
 
 def test_get_device_sensors_includes_thresholds(client, app):
-    resp = client.get('/device-sensors/A0/2')
+    resp = client.get('/device-sensors/A0')
     data = resp.get_json()
     assert data['min_temperature'] == 15.0
     assert data['max_temperature'] == 35.0
@@ -33,16 +33,16 @@ def test_get_device_sensors_includes_thresholds(client, app):
 
 
 def test_update_thresholds_requires_auth(client, app):
-    client.get('/device-sensors/A0/2')
-    resp = client.put('/device-sensors/A0/2/thresholds', json=FULL_PAYLOAD)
+    client.get('/device-sensors/A0')
+    resp = client.put('/device-sensors/A0/thresholds', json=FULL_PAYLOAD)
     assert resp.status_code == 401
 
 
 def test_update_thresholds_succeeds(client, app):
-    client.get('/device-sensors/A0/2')
+    client.get('/device-sensors/A0')
     token = _login(client, app)
     resp = client.put(
-        '/device-sensors/A0/2/thresholds',
+        '/device-sensors/A0/thresholds',
         json=FULL_PAYLOAD,
         headers={'Authorization': f'Bearer {token}'},
     )
@@ -61,11 +61,11 @@ def test_update_thresholds_succeeds(client, app):
 
 
 def test_update_thresholds_rejects_invalid_range(client, app):
-    client.get('/device-sensors/A0/2')
+    client.get('/device-sensors/A0')
     token = _login(client, app)
     payload = {**FULL_PAYLOAD, 'min_temperature': 30, 'max_temperature': 10}
     resp = client.put(
-        '/device-sensors/A0/2/thresholds',
+        '/device-sensors/A0/thresholds',
         json=payload,
         headers={'Authorization': f'Bearer {token}'},
     )
@@ -73,11 +73,11 @@ def test_update_thresholds_rejects_invalid_range(client, app):
 
 
 def test_update_thresholds_rejects_invalid_critical_range(client, app):
-    client.get('/device-sensors/A0/2')
+    client.get('/device-sensors/A0')
     token = _login(client, app)
     payload = {**FULL_PAYLOAD, 'min_temperature_critical': 40, 'max_temperature_critical': 0}
     resp = client.put(
-        '/device-sensors/A0/2/thresholds',
+        '/device-sensors/A0/thresholds',
         json=payload,
         headers={'Authorization': f'Bearer {token}'},
     )
@@ -85,11 +85,11 @@ def test_update_thresholds_rejects_invalid_critical_range(client, app):
 
 
 def test_update_thresholds_rejects_missing_field(client, app):
-    client.get('/device-sensors/A0/2')
+    client.get('/device-sensors/A0')
     token = _login(client, app)
     payload = {k: v for k, v in FULL_PAYLOAD.items() if k != 'alert_delay_seconds'}
     resp = client.put(
-        '/device-sensors/A0/2/thresholds',
+        '/device-sensors/A0/thresholds',
         json=payload,
         headers={'Authorization': f'Bearer {token}'},
     )
@@ -99,7 +99,7 @@ def test_update_thresholds_rejects_missing_field(client, app):
 def test_update_thresholds_404_when_device_missing(client, app):
     token = _login(client, app)
     resp = client.put(
-        '/device-sensors/Z9/999/thresholds',
+        '/device-sensors/Z9/thresholds',
         json=FULL_PAYLOAD,
         headers={'Authorization': f'Bearer {token}'},
     )

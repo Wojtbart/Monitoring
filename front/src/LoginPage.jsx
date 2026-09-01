@@ -32,7 +32,7 @@ const LoginPage = () => {
                 }
             );
             localStorage.setItem("JWT", response.data.accessToken);
-            navigate("/rzut");
+            navigate("/floor-plan");
         } catch (error) {
             console.error("Error: ", error);
             alert("Niepoprawy login lub hasło");

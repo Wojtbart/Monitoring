@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
+import { useRealTimeData } from "./RealTimeDataContext";
 import { Box, Typography, IconButton, Chip, TextField, Button, Alert, Switch, FormControlLabel } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import BoltIcon from "@mui/icons-material/Bolt";
@@ -11,11 +12,12 @@ export default function VoltageDetail() {
     const navigate = useNavigate();
     const accessToken = localStorage.getItem("JWT");
 
-    const [voltage, setVoltage] = useState(null);
+    const { voltage = null } = useRealTimeData();
     const [minInput, setMinInput] = useState("");
     const [maxInput, setMaxInput] = useState("");
     const [saveStatus, setSaveStatus] = useState(null);
     const [active, setActive] = useState(false);
+    const [acknowledged, setAcknowledged] = useState(false);
     const [lastTriggeredAt, setLastTriggeredAt] = useState(null);
     const [alarmStatus, setAlarmStatus] = useState(null);
     const [enabled, setEnabled] = useState(true);
@@ -23,18 +25,17 @@ export default function VoltageDetail() {
     useEffect(() => {
         const fetchState = async () => {
             try {
-                const [rtRes, thresholdRes, alarmRes] = await Promise.all([
-                    axios.get(`${API_BASE}/real-time-data`),
+                const [thresholdRes, alarmRes] = await Promise.all([
                     axios.get(`${API_BASE}/voltage-threshold`),
                     axios.get(`${API_BASE}/alarm-states`),
                 ]);
-                setVoltage(rtRes.data.voltage);
                 setMinInput(String(thresholdRes.data.min_voltage));
                 setMaxInput(String(thresholdRes.data.max_voltage));
                 setEnabled(thresholdRes.data.enabled);
                 const state = alarmRes.data.states.find(s => s.event_type === "voltage");
                 if (state) {
                     setActive(state.active);
+                    setAcknowledged(state.acknowledged);
                     setLastTriggeredAt(state.last_triggered_at);
                 }
             } catch (_) {}
@@ -98,15 +99,15 @@ export default function VoltageDetail() {
         setTimeout(() => setAlarmStatus(null), 3000);
     };
 
-    const handleClear = async () => {
+    const handleAcknowledge = async () => {
         try {
-            await axios.delete(`${API_BASE}/sensors/voltage/clear`, {
+            await axios.delete(`${API_BASE}/sensors/voltage/acknowledge`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
-            setActive(false);
-            setAlarmStatus({ type: "success", message: "Alarm skasowany." });
+            setAcknowledged(true);
+            setAlarmStatus({ type: "success", message: "Alarm potwierdzony." });
         } catch (error) {
-            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd kasowania alarmu." });
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd potwierdzania alarmu." });
         }
         setTimeout(() => setAlarmStatus(null), 2500);
     };
@@ -119,7 +120,7 @@ export default function VoltageDetail() {
                         <ArrowBackIcon fontSize="small" />
                     </IconButton>
                     <Typography variant="h5" fontWeight="bold" sx={{ color: "#1a1a2e" }}>
-                        Napięcie zasilania
+                        Napięcie zasilania UPS
                     </Typography>
                 </Box>
 
@@ -154,11 +155,17 @@ export default function VoltageDetail() {
 
                         <Box sx={{
                             p: 2, mb: 2, borderRadius: 1.5,
-                            bgcolor: active ? "#fdecea" : "#eaf6ec",
-                            border: active ? "1px solid #e53935" : "1px solid #2e7d32",
+                            bgcolor: !active ? "#eaf6ec" : acknowledged ? "#fff8e1" : "#fdecea",
+                            border: !active ? "1px solid #2e7d32" : acknowledged ? "1px solid #f9a825" : "1px solid #e53935",
                         }}>
-                            <Typography variant="h6" fontWeight="bold" sx={{ color: active ? "#c62828" : "#2e7d32" }}>
-                                {active ? "ALARM — przekroczono próg, wymaga skasowania" : "Brak alarmu"}
+                            <Typography variant="h6" fontWeight="bold" sx={{
+                                color: !active ? "#2e7d32" : acknowledged ? "#8a6d00" : "#c62828",
+                            }}>
+                                {!active
+                                    ? "Brak alarmu"
+                                    : acknowledged
+                                        ? "Potwierdzony — czeka na powrót do normy"
+                                        : "ALARM — przekroczono próg, wymaga potwierdzenia"}
                             </Typography>
                             {lastTriggeredAt && (
                                 <Typography variant="caption" color="text.secondary">
@@ -171,8 +178,8 @@ export default function VoltageDetail() {
                             <Button variant="outlined" onClick={handleSimulate}>
                                 Symuluj alarm (test)
                             </Button>
-                            <Button variant="contained" color="error" onClick={handleClear} disabled={!active}>
-                                Skasuj alarm
+                            <Button variant="contained" color="error" onClick={handleAcknowledge} disabled={!active || acknowledged}>
+                                Potwierdź alarm
                             </Button>
                         </Box>
 
@@ -208,8 +215,14 @@ export default function VoltageDetail() {
                             )}
                         </Box>
 
-                        <Typography variant="body2">
-                            <a href="/settings#powiadomienia">Skonfiguruj powiadomienia dla tego zdarzenia →</a>
+                        <Typography
+                            variant="body2" onClick={() => navigate("/settings#powiadomienia")}
+                            sx={{
+                                color: "#1565c0", fontWeight: "bold", cursor: "pointer", display: "inline-block",
+                                "&:hover": { textDecoration: "underline" },
+                            }}
+                        >
+                            Skonfiguruj powiadomienia dla tego zdarzenia →
                         </Typography>
                     </>
                 )}

@@ -2,7 +2,7 @@ import os
 from flask import Flask, Response, request, jsonify, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
-from models import db, User, Setting, Log, Layout, DeviceSensor, DeviceSensorHistory, EmailGroup, EmailRecipient, SmsGroup, SmsRecipient, NotificationRule, NOTIFICATION_EVENT_TYPES, AlarmState, ALARM_EVENT_TYPES, DeviceAlarmState, VoltageThreshold, DeviceSensorSettings, alarm_should_fire, is_within_schedule, SmtpSettings, DEFAULT_SCHEDULE
+from models import db, User, Setting, Log, Layout, DeviceSensor, DeviceSensorHistory, NotificationGroup, NotificationRecipient, NotificationRule, NOTIFICATION_EVENT_TYPES, AlarmState, ALARM_EVENT_TYPES, DeviceAlarmState, VoltageThreshold, DeviceSensorSettings, alarm_should_fire, is_within_schedule, SmtpSettings, DEFAULT_SCHEDULE
 from pythonping import ping
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -220,121 +220,62 @@ def delete_all_videos():
     return jsonify({'message': 'Wszystkie wideo usunięte'}), 200
 
 
-@app.route('/email-groups', methods=['POST'])
+@app.route('/notification-groups', methods=['POST'])
 @jwt_required()
-def add_email_group():
+def add_notification_group():
     data = request.get_json()
     name = data.get('name')
     if not name:
         return jsonify({'message': 'Nazwa grupy wymagana'}), 400
-    group = EmailGroup.add_group(name)
+    group = NotificationGroup.add_group(name)
     if not group:
         return jsonify({'message': 'Grupa o takiej nazwie już istnieje'}), 400
     return jsonify({'message': 'Grupa dodana', 'id': group.id}), 201
 
 
-@app.route('/email-groups', methods=['GET'])
-def get_email_groups():
-    return jsonify({'groups': EmailGroup.get_all_with_recipients()}), 200
+@app.route('/notification-groups', methods=['GET'])
+def get_notification_groups():
+    return jsonify({'groups': NotificationGroup.get_all_with_recipients()}), 200
 
 
-@app.route('/email-groups/<int:group_id>', methods=['DELETE'])
+@app.route('/notification-groups/<int:group_id>', methods=['DELETE'])
 @jwt_required()
-def delete_email_group(group_id):
-    if not EmailGroup.delete_group(group_id):
+def delete_notification_group(group_id):
+    if not NotificationGroup.delete_group(group_id):
         return jsonify({'message': 'Grupa nie znaleziona'}), 404
     return jsonify({'message': 'Grupa usunięta'}), 200
 
 
-@app.route('/email-groups/<int:group_id>/recipients', methods=['POST'])
+@app.route('/notification-groups/<int:group_id>/recipients', methods=['POST'])
 @jwt_required()
-def add_email_recipient(group_id):
+def add_notification_recipient(group_id):
     data = request.get_json()
-    email = data.get('email')
-    if not email:
-        return jsonify({'message': 'Adres e-mail wymagany'}), 400
-    recipient = EmailGroup.add_recipient(group_id, email)
+    email = (data.get('email') or '').strip() or None
+    phone_number = (data.get('phone_number') or '').strip() or None
+    if not email and not phone_number:
+        return jsonify({'message': 'Podaj e-mail lub numer telefonu'}), 400
+    recipient = NotificationGroup.add_recipient(group_id, email=email, phone_number=phone_number)
     if not recipient:
         return jsonify({'message': 'Grupa nie znaleziona'}), 404
-    return jsonify({'message': 'Adres dodany', 'id': recipient.id}), 201
+    return jsonify({'message': 'Odbiorca dodany', 'id': recipient.id}), 201
 
 
-@app.route('/email-groups/<int:group_id>/recipients/<int:recipient_id>', methods=['DELETE'])
+@app.route('/notification-groups/<int:group_id>/recipients/<int:recipient_id>', methods=['DELETE'])
 @jwt_required()
-def delete_email_recipient(group_id, recipient_id):
-    if not EmailGroup.delete_recipient(recipient_id):
-        return jsonify({'message': 'Adres nie znaleziony'}), 404
-    return jsonify({'message': 'Adres usunięty'}), 200
+def delete_notification_recipient(group_id, recipient_id):
+    if not NotificationGroup.delete_recipient(recipient_id):
+        return jsonify({'message': 'Odbiorca nie znaleziony'}), 404
+    return jsonify({'message': 'Odbiorca usunięty'}), 200
 
 
-@app.route('/email-groups/<int:group_id>/schedule', methods=['PUT'])
+@app.route('/notification-groups/<int:group_id>/schedule', methods=['PUT'])
 @jwt_required()
-def update_email_group_schedule(group_id):
+def update_notification_group_schedule(group_id):
     data = request.get_json()
     schedule = data.get('schedule')
     if not schedule or len(schedule) != 168 or any(c not in '01' for c in schedule):
         return jsonify({'message': 'Nieprawidłowy harmonogram'}), 400
-    group = EmailGroup.update_schedule(group_id, schedule)
-    if not group:
-        return jsonify({'message': 'Grupa nie znaleziona'}), 404
-    return jsonify({'message': 'Harmonogram zapisany'}), 200
-
-
-@app.route('/sms-groups', methods=['POST'])
-@jwt_required()
-def add_sms_group():
-    data = request.get_json()
-    name = data.get('name')
-    if not name:
-        return jsonify({'message': 'Nazwa grupy wymagana'}), 400
-    group = SmsGroup.add_group(name)
-    if not group:
-        return jsonify({'message': 'Grupa o takiej nazwie już istnieje'}), 400
-    return jsonify({'message': 'Grupa dodana', 'id': group.id}), 201
-
-
-@app.route('/sms-groups', methods=['GET'])
-def get_sms_groups():
-    return jsonify({'groups': SmsGroup.get_all_with_recipients()}), 200
-
-
-@app.route('/sms-groups/<int:group_id>', methods=['DELETE'])
-@jwt_required()
-def delete_sms_group(group_id):
-    if not SmsGroup.delete_group(group_id):
-        return jsonify({'message': 'Grupa nie znaleziona'}), 404
-    return jsonify({'message': 'Grupa usunięta'}), 200
-
-
-@app.route('/sms-groups/<int:group_id>/recipients', methods=['POST'])
-@jwt_required()
-def add_sms_recipient(group_id):
-    data = request.get_json()
-    phone_number = data.get('phone_number')
-    if not phone_number:
-        return jsonify({'message': 'Numer telefonu wymagany'}), 400
-    recipient = SmsGroup.add_recipient(group_id, phone_number)
-    if not recipient:
-        return jsonify({'message': 'Grupa nie znaleziona'}), 404
-    return jsonify({'message': 'Numer dodany', 'id': recipient.id}), 201
-
-
-@app.route('/sms-groups/<int:group_id>/recipients/<int:recipient_id>', methods=['DELETE'])
-@jwt_required()
-def delete_sms_recipient(group_id, recipient_id):
-    if not SmsGroup.delete_recipient(recipient_id):
-        return jsonify({'message': 'Numer nie znaleziony'}), 404
-    return jsonify({'message': 'Numer usunięty'}), 200
-
-
-@app.route('/sms-groups/<int:group_id>/schedule', methods=['PUT'])
-@jwt_required()
-def update_sms_group_schedule(group_id):
-    data = request.get_json()
-    schedule = data.get('schedule')
-    if not schedule or len(schedule) != 168 or any(c not in '01' for c in schedule):
-        return jsonify({'message': 'Nieprawidłowy harmonogram'}), 400
-    group = SmsGroup.update_schedule(group_id, schedule)
+    group = NotificationGroup.update_schedule(group_id, schedule)
     if not group:
         return jsonify({'message': 'Grupa nie znaleziona'}), 404
     return jsonify({'message': 'Harmonogram zapisany'}), 200
@@ -351,17 +292,15 @@ def update_notification_rules():
     data = request.get_json()
     rules = data.get('rules')
     if not rules or len(rules) != len(NOTIFICATION_EVENT_TYPES):
-        return jsonify({'message': 'Wymagane dokładnie 4 reguły'}), 400
+        return jsonify({'message': f'Wymagane dokładnie {len(NOTIFICATION_EVENT_TYPES)} reguł'}), 400
     seen_types = set()
     for rule in rules:
         event_type = rule.get('event_type')
         if event_type not in NOTIFICATION_EVENT_TYPES or event_type in seen_types:
             return jsonify({'message': 'Nieprawidłowy typ zdarzenia'}), 400
         seen_types.add(event_type)
-        if rule.get('email_group_id') is not None and not db.session.get(EmailGroup, rule['email_group_id']):
-            return jsonify({'message': 'Grupa mailowa nie istnieje'}), 400
-        if rule.get('sms_group_id') is not None and not db.session.get(SmsGroup, rule['sms_group_id']):
-            return jsonify({'message': 'Grupa SMS nie istnieje'}), 400
+        if rule.get('group_id') is not None and not db.session.get(NotificationGroup, rule['group_id']):
+            return jsonify({'message': 'Grupa nie istnieje'}), 400
     NotificationRule.update_all(rules)
     return jsonify({'message': 'Reguły zaktualizowane'}), 200
 
@@ -395,17 +334,17 @@ def simulate_sensor_alert(event_type):
     return jsonify({'message': 'Alarm testowy wywołany'}), 200
 
 
-@app.route('/sensors/<event_type>/clear', methods=['DELETE'])
+@app.route('/sensors/<event_type>/acknowledge', methods=['DELETE'])
 @jwt_required()
-def clear_sensor_alert(event_type):
+def acknowledge_sensor_alert(event_type):
     if event_type not in ALARM_EVENT_TYPES:
         return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
-    if not AlarmState.clear(event_type):
+    if not AlarmState.acknowledge(event_type):
         return jsonify({'message': 'Stan alarmu nie znaleziony'}), 404
     current_user = get_jwt_identity()
     Log.add_log(datetime.now(), EVENT_TYPE_SENSOR_NAMES[event_type], False,
-                f'Alarm skasowany przez {current_user}')
-    return jsonify({'message': 'Alarm skasowany'}), 200
+                f'Alarm potwierdzony przez {current_user}')
+    return jsonify({'message': 'Alarm potwierdzony'}), 200
 
 
 @app.route('/settings', methods=['PUT'])
@@ -415,6 +354,7 @@ def save_settings():
     ok = Setting.update_settings(
         data.get('id'),
         data.get('recording_seconds'),
+        data.get('auto_save_layout'),
     )
     if ok:
         sensor.update_settings(Setting.get_all_settings())
@@ -499,9 +439,13 @@ def test_smtp_settings():
     if not to_address:
         return jsonify({'message': 'Adres odbiorcy wymagany'}), 400
     from notifications import send_email
-    send_email([to_address], 'Test SMTP — Monitoring System',
-               'To jest testowa wiadomość ze strony Ustawienia → SMTP.')
-    return jsonify({'message': 'Wysłano (sprawdź skrzynkę i logi backendu w razie błędu)'}), 200
+    try:
+        send_email([to_address], 'Test SMTP — Monitoring System',
+                   'To jest testowa wiadomość ze strony Ustawienia → SMTP.',
+                   raise_on_error=True)
+    except Exception as e:
+        return jsonify({'message': f'Błąd wysyłki: {e}'}), 502
+    return jsonify({'message': 'Wysłano — sprawdź skrzynkę (też SPAM).'}), 200
 
 
 @app.route('/settings-and-phone-numbers', methods=['GET'])
@@ -548,7 +492,7 @@ def _fmt_dt(value):
     return value.strftime('%Y-%m-%d %H:%M:%S') if value else None
 
 
-def _device_sensor_dict(rack_id, unit, device):
+def _device_sensor_dict(rack_id, device):
     return {
         'temperature': device.temperature,
         'humidity': device.humidity,
@@ -562,10 +506,14 @@ def _device_sensor_dict(rack_id, unit, device):
         'min_humidity_critical': device.min_humidity_critical,
         'max_humidity_critical': device.max_humidity_critical,
         'alert_delay_seconds': device.alert_delay_seconds,
-        'alarm_active_temperature_non_critical': DeviceAlarmState.is_active(rack_id, unit, 'temperature', 'non_critical'),
-        'alarm_active_temperature_critical': DeviceAlarmState.is_active(rack_id, unit, 'temperature', 'critical'),
-        'alarm_active_humidity_non_critical': DeviceAlarmState.is_active(rack_id, unit, 'humidity', 'non_critical'),
-        'alarm_active_humidity_critical': DeviceAlarmState.is_active(rack_id, unit, 'humidity', 'critical'),
+        'alarm_active_temperature_non_critical': DeviceAlarmState.is_active(rack_id, 'temperature', 'non_critical'),
+        'alarm_active_temperature_critical': DeviceAlarmState.is_active(rack_id, 'temperature', 'critical'),
+        'alarm_active_humidity_non_critical': DeviceAlarmState.is_active(rack_id, 'humidity', 'non_critical'),
+        'alarm_active_humidity_critical': DeviceAlarmState.is_active(rack_id, 'humidity', 'critical'),
+        'alarm_acknowledged_temperature_non_critical': DeviceAlarmState.is_acknowledged(rack_id, 'temperature', 'non_critical'),
+        'alarm_acknowledged_temperature_critical': DeviceAlarmState.is_acknowledged(rack_id, 'temperature', 'critical'),
+        'alarm_acknowledged_humidity_non_critical': DeviceAlarmState.is_acknowledged(rack_id, 'humidity', 'non_critical'),
+        'alarm_acknowledged_humidity_critical': DeviceAlarmState.is_acknowledged(rack_id, 'humidity', 'critical'),
         'lowest_temperature': device.lowest_temperature,
         'lowest_temperature_at': _fmt_dt(device.lowest_temperature_at),
         'highest_temperature': device.highest_temperature,
@@ -577,8 +525,8 @@ def _device_sensor_dict(rack_id, unit, device):
     }
 
 
-def _raise_device_alert(rack_id, unit, metric, severity, value, min_v, max_v, force=False):
-    state = DeviceAlarmState.get(rack_id, unit, metric, severity)
+def _raise_device_alert(rack_id, metric, severity, value, min_v, max_v, force=False):
+    state = DeviceAlarmState.get(rack_id, metric, severity)
     rule = NotificationRule.query.filter_by(event_type='device_threshold').first()
     notify_again_minutes = rule.notify_again_minutes if rule else 30
     if not alarm_should_fire(state, notify_again_minutes, force=force):
@@ -587,73 +535,77 @@ def _raise_device_alert(rack_id, unit, metric, severity, value, min_v, max_v, fo
     label = DEVICE_METRIC_LABELS[metric]
     unit_symbol = DEVICE_METRIC_UNITS[metric]
     severity_label = DEVICE_SEVERITY_LABELS[severity]
-    desc = (f'Przekroczono próg {label} ({severity_label}) w szafie {rack_id} (unit {unit}): '
+    desc = (f'Przekroczono próg {label} ({severity_label}) w szafie {rack_id}: '
             f'{value}{unit_symbol} (próg {min_v}-{max_v}{unit_symbol})')
-    Log.add_log(datetime.now(), f'Szafa {rack_id} — Unit {unit}', True, desc)
-    DeviceAlarmState.trigger(rack_id, unit, metric, severity)
+    Log.add_log(datetime.now(), f'Szafa {rack_id}', True, desc)
+    DeviceAlarmState.trigger(rack_id, metric, severity)
 
-    if not rule:
+    if not rule or not rule.group_id:
         return
+    group = db.session.get(NotificationGroup, rule.group_id)
+    if not group or not is_within_schedule(group.schedule, datetime.now()):
+        return
+    recipients = NotificationRecipient.query.filter_by(group_id=rule.group_id).all()
     from notifications import send_email, send_sms
-    if rule.email_enabled and rule.email_group_id:
-        email_group = db.session.get(EmailGroup, rule.email_group_id)
-        if email_group and is_within_schedule(email_group.schedule, datetime.now()):
-            emails = [r.email for r in EmailRecipient.query.filter_by(group_id=rule.email_group_id).all()]
+    if rule.email_enabled:
+        emails = [r.email for r in recipients if r.email]
+        if emails:
             subject = rule.email_custom_subject if (rule.email_custom_subject_enabled and rule.email_custom_subject) else f'Alarm: {desc}'
             attachment = camera.capture_jpeg() if rule.email_attach_camera else None
             send_email(emails, subject, desc, attachment_bytes=attachment)
-    if rule.sms_enabled and rule.sms_group_id:
-        sms_group = db.session.get(SmsGroup, rule.sms_group_id)
-        if sms_group and is_within_schedule(sms_group.schedule, datetime.now()):
-            numbers = [r.phone_number for r in SmsRecipient.query.filter_by(group_id=rule.sms_group_id).all()]
+    if rule.sms_enabled:
+        numbers = [r.phone_number for r in recipients if r.phone_number]
+        if numbers:
             sms_text = rule.sms_custom_message if (rule.sms_custom_enabled and rule.sms_custom_message) else desc
             send_sms(numbers, sms_text)
 
 
-def _raise_device_return_to_normal(rack_id, unit, metric, severity):
+def _raise_device_return_to_normal(rack_id, metric, severity):
     rule = NotificationRule.query.filter_by(event_type='device_threshold').first()
     label = DEVICE_METRIC_LABELS[metric]
     severity_label = DEVICE_SEVERITY_LABELS[severity]
-    desc = f'{label.capitalize()} ({severity_label}) wróciła do normy w szafie {rack_id} (unit {unit})'
-    Log.add_log(datetime.now(), f'Szafa {rack_id} — Unit {unit}', False, desc)
-    DeviceAlarmState.mark_return_notified(rack_id, unit, metric, severity)
+    desc = f'{label.capitalize()} ({severity_label}) wróciła do normy w szafie {rack_id}'
+    Log.add_log(datetime.now(), f'Szafa {rack_id}', False, desc)
+    DeviceAlarmState.clear(rack_id, metric, severity)
 
-    if not rule or not rule.notify_on_return_enabled:
+    if not rule or not rule.notify_on_return_enabled or not rule.group_id:
         return
+    group = db.session.get(NotificationGroup, rule.group_id)
+    if not group or not is_within_schedule(group.schedule, datetime.now()):
+        return
+    recipients = NotificationRecipient.query.filter_by(group_id=rule.group_id).all()
     from notifications import send_email, send_sms
-    if rule.email_enabled and rule.email_group_id:
-        email_group = db.session.get(EmailGroup, rule.email_group_id)
-        if email_group and is_within_schedule(email_group.schedule, datetime.now()):
-            emails = [r.email for r in EmailRecipient.query.filter_by(group_id=rule.email_group_id).all()]
+    if rule.email_enabled:
+        emails = [r.email for r in recipients if r.email]
+        if emails:
             subject = rule.email_custom_subject if (rule.email_custom_subject_enabled and rule.email_custom_subject) else f'Powrót do normy: {desc}'
             send_email(emails, subject, desc)
-    if rule.sms_enabled and rule.sms_group_id:
-        sms_group = db.session.get(SmsGroup, rule.sms_group_id)
-        if sms_group and is_within_schedule(sms_group.schedule, datetime.now()):
-            numbers = [r.phone_number for r in SmsRecipient.query.filter_by(group_id=rule.sms_group_id).all()]
+    if rule.sms_enabled:
+        numbers = [r.phone_number for r in recipients if r.phone_number]
+        if numbers:
             send_sms(numbers, desc)
 
 
-def _check_device_metric_severity(rack_id, unit, metric, severity, value, min_v, max_v, alert_delay_seconds):
+def _check_device_metric_severity(rack_id, metric, severity, value, min_v, max_v, alert_delay_seconds):
     out_of_range = value < min_v or value > max_v
     if out_of_range:
-        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
+        state = DeviceAlarmState.get(rack_id, metric, severity)
         if state and state.active:
-            _raise_device_alert(rack_id, unit, metric, severity, value, min_v, max_v)
+            _raise_device_alert(rack_id, metric, severity, value, min_v, max_v)
         elif alert_delay_seconds <= 0:
-            _raise_device_alert(rack_id, unit, metric, severity, value, min_v, max_v)
+            _raise_device_alert(rack_id, metric, severity, value, min_v, max_v)
         else:
-            pending_since = DeviceAlarmState.mark_pending(rack_id, unit, metric, severity)
+            pending_since = DeviceAlarmState.mark_pending(rack_id, metric, severity)
             if (datetime.now() - pending_since).total_seconds() >= alert_delay_seconds:
-                _raise_device_alert(rack_id, unit, metric, severity, value, min_v, max_v)
+                _raise_device_alert(rack_id, metric, severity, value, min_v, max_v)
     else:
-        DeviceAlarmState.clear_pending(rack_id, unit, metric, severity)
-        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
-        if state and state.active and not state.return_notified:
-            _raise_device_return_to_normal(rack_id, unit, metric, severity)
+        DeviceAlarmState.clear_pending(rack_id, metric, severity)
+        state = DeviceAlarmState.get(rack_id, metric, severity)
+        if state and state.active:
+            _raise_device_return_to_normal(rack_id, metric, severity)
 
 
-def _check_device_thresholds(rack_id, unit, device):
+def _check_device_thresholds(rack_id, device):
     checks = (
         ('temperature', device.temperature, 'non_critical', device.min_temperature, device.max_temperature),
         ('temperature', device.temperature, 'critical', device.min_temperature_critical, device.max_temperature_critical),
@@ -661,7 +613,7 @@ def _check_device_thresholds(rack_id, unit, device):
         ('humidity', device.humidity, 'critical', device.min_humidity_critical, device.max_humidity_critical),
     )
     for metric, value, severity, min_v, max_v in checks:
-        _check_device_metric_severity(rack_id, unit, metric, severity, value, min_v, max_v, device.alert_delay_seconds)
+        _check_device_metric_severity(rack_id, metric, severity, value, min_v, max_v, device.alert_delay_seconds)
 
 
 @app.route('/device-sensor-settings', methods=['GET'])
@@ -681,28 +633,28 @@ def save_device_sensor_settings():
     return jsonify({'enabled': settings.enabled}), 200
 
 
-@app.route('/device-sensors/<rack_id>/<int:unit>', methods=['GET'])
-def get_device_sensors(rack_id, unit):
+@app.route('/device-sensors/<rack_id>', methods=['GET'])
+def get_device_sensors(rack_id):
     if not DeviceSensorSettings.get_or_create().enabled:
-        device = DeviceSensor.get_existing(rack_id, unit)
+        device = DeviceSensor.get_existing(rack_id)
         if device is None:
             return jsonify({'enabled': False}), 200
-        result = _device_sensor_dict(rack_id, unit, device)
+        result = _device_sensor_dict(rack_id, device)
         result['enabled'] = False
         return jsonify(result), 200
-    device = DeviceSensor.get_or_create_reading(rack_id, unit)
-    _check_device_thresholds(rack_id, unit, device)
-    result = _device_sensor_dict(rack_id, unit, device)
+    device = DeviceSensor.get_or_create_reading(rack_id)
+    _check_device_thresholds(rack_id, device)
+    result = _device_sensor_dict(rack_id, device)
     result['enabled'] = True
     return jsonify(result), 200
 
 
-@app.route('/device-sensors/<rack_id>/<int:unit>/<metric>/<severity>/simulate', methods=['POST'])
+@app.route('/device-sensors/<rack_id>/<metric>/<severity>/simulate', methods=['POST'])
 @jwt_required()
-def simulate_device_alert(rack_id, unit, metric, severity):
+def simulate_device_alert(rack_id, metric, severity):
     if metric not in DEVICE_METRIC_LABELS or severity not in DEVICE_SEVERITY_LABELS:
         return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
-    device = DeviceSensor.get_or_create_reading(rack_id, unit)
+    device = DeviceSensor.get_or_create_reading(rack_id)
     value = device.temperature if metric == 'temperature' else device.humidity
     if metric == 'temperature':
         min_v = device.min_temperature_critical if severity == 'critical' else device.min_temperature
@@ -710,26 +662,26 @@ def simulate_device_alert(rack_id, unit, metric, severity):
     else:
         min_v = device.min_humidity_critical if severity == 'critical' else device.min_humidity
         max_v = device.max_humidity_critical if severity == 'critical' else device.max_humidity
-    _raise_device_alert(rack_id, unit, metric, severity, value, min_v, max_v, force=True)
+    _raise_device_alert(rack_id, metric, severity, value, min_v, max_v, force=True)
     return jsonify({'message': 'Alarm zasymulowany'}), 200
 
 
-@app.route('/device-sensors/<rack_id>/<int:unit>/<metric>/<severity>/clear', methods=['DELETE'])
+@app.route('/device-sensors/<rack_id>/<metric>/<severity>/acknowledge', methods=['DELETE'])
 @jwt_required()
-def clear_device_alert(rack_id, unit, metric, severity):
+def acknowledge_device_alert(rack_id, metric, severity):
     if metric not in DEVICE_METRIC_LABELS or severity not in DEVICE_SEVERITY_LABELS:
         return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
-    if not DeviceAlarmState.clear(rack_id, unit, metric, severity):
+    if not DeviceAlarmState.acknowledge(rack_id, metric, severity):
         return jsonify({'message': 'Stan alarmu nie znaleziony'}), 404
     current_user = get_jwt_identity()
-    Log.add_log(datetime.now(), f'Szafa {rack_id} — Unit {unit}', False,
-                f'Alarm ({DEVICE_METRIC_LABELS[metric]}, {DEVICE_SEVERITY_LABELS[severity]}) skasowany przez {current_user}')
-    return jsonify({'message': 'Alarm skasowany'}), 200
+    Log.add_log(datetime.now(), f'Szafa {rack_id}', False,
+                f'Alarm ({DEVICE_METRIC_LABELS[metric]}, {DEVICE_SEVERITY_LABELS[severity]}) potwierdzony przez {current_user}')
+    return jsonify({'message': 'Alarm potwierdzony'}), 200
 
 
-@app.route('/device-sensors/<rack_id>/<int:unit>/thresholds', methods=['PUT'])
+@app.route('/device-sensors/<rack_id>/thresholds', methods=['PUT'])
 @jwt_required()
-def update_device_sensor_thresholds(rack_id, unit):
+def update_device_sensor_thresholds(rack_id):
     data = request.get_json()
     fields = ['min_temperature', 'max_temperature', 'min_humidity', 'max_humidity',
               'min_temperature_critical', 'max_temperature_critical',
@@ -744,7 +696,7 @@ def update_device_sensor_thresholds(rack_id, unit):
         return jsonify({'message': 'Wartość minimalna musi być mniejsza niż maksymalna (krytyczny)'}), 400
 
     device = DeviceSensor.update_thresholds(
-        rack_id, unit,
+        rack_id,
         values['min_temperature'], values['max_temperature'],
         values['min_humidity'], values['max_humidity'],
         values['min_temperature_critical'], values['max_temperature_critical'],
@@ -753,15 +705,15 @@ def update_device_sensor_thresholds(rack_id, unit):
     )
     if device is None:
         return jsonify({'message': 'Urządzenie nie znalezione'}), 404
-    return jsonify(_device_sensor_dict(rack_id, unit, device)), 200
+    return jsonify(_device_sensor_dict(rack_id, device)), 200
 
 
 HISTORY_RANGE_HOURS = {'24h': 24, 'week': 24 * 7, 'month': 24 * 30}
 
 
-@app.route('/device-sensors/<rack_id>/<int:unit>/history', methods=['GET'])
-def get_device_sensor_history(rack_id, unit):
-    query = DeviceSensorHistory.query.filter_by(rack_id=rack_id, unit=unit)
+@app.route('/device-sensors/<rack_id>/history', methods=['GET'])
+def get_device_sensor_history(rack_id):
+    query = DeviceSensorHistory.query.filter_by(rack_id=rack_id)
     range_key = request.args.get('range')
     hours = HISTORY_RANGE_HOURS.get(range_key)
     if hours:
@@ -777,20 +729,20 @@ def get_device_sensor_history(rack_id, unit):
     ]}), 200
 
 
-@app.route('/device-sensors/<rack_id>/<int:unit>/history', methods=['DELETE'])
+@app.route('/device-sensors/<rack_id>/history', methods=['DELETE'])
 @jwt_required()
-def clear_device_sensor_history(rack_id, unit):
-    DeviceSensor.clear_history(rack_id, unit)
+def clear_device_sensor_history(rack_id):
+    DeviceSensor.clear_history(rack_id)
     return jsonify({'message': 'Wykres wyczyszczony'}), 200
 
 
-@app.route('/device-sensors/<rack_id>/<int:unit>/records', methods=['DELETE'])
+@app.route('/device-sensors/<rack_id>/records', methods=['DELETE'])
 @jwt_required()
-def clear_device_sensor_records(rack_id, unit):
-    device = DeviceSensor.clear_records(rack_id, unit)
+def clear_device_sensor_records(rack_id):
+    device = DeviceSensor.clear_records(rack_id)
     if device is None:
         return jsonify({'message': 'Urządzenie nie znalezione'}), 404
-    return jsonify(_device_sensor_dict(rack_id, unit, device)), 200
+    return jsonify(_device_sensor_dict(rack_id, device)), 200
 
 
 @app.route('/ping/<path:address>', methods=['GET'])
@@ -805,18 +757,16 @@ def ping_host(address):
 
 
 def _export_config():
-    email_names = {g.id: g.name for g in EmailGroup.query.all()}
-    sms_names = {g.id: g.name for g in SmsGroup.query.all()}
+    group_names = {g.id: g.name for g in NotificationGroup.query.all()}
     rules = []
     for r in NotificationRule.get_all():
         rules.append({
             **r,
-            'email_group_name': email_names.get(r['email_group_id']),
-            'sms_group_name': sms_names.get(r['sms_group_id']),
+            'group_name': group_names.get(r['group_id']),
         })
     thresholds = [
         {
-            'rack_id': d.rack_id, 'unit': d.unit,
+            'rack_id': d.rack_id,
             'min_temperature': d.min_temperature, 'max_temperature': d.max_temperature,
             'min_humidity': d.min_humidity, 'max_humidity': d.max_humidity,
             'min_temperature_critical': d.min_temperature_critical, 'max_temperature_critical': d.max_temperature_critical,
@@ -833,49 +783,35 @@ def _export_config():
         'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'settings': Setting.get_all_settings(),
         'notification_rules': rules,
-        'email_groups': EmailGroup.get_all_with_recipients(),
-        'sms_groups': SmsGroup.get_all_with_recipients(),
+        'notification_groups': NotificationGroup.get_all_with_recipients(),
         'device_sensor_thresholds': thresholds,
         'voltage_threshold': {'min_voltage': voltage.min_voltage, 'max_voltage': voltage.max_voltage},
         'smtp_settings': smtp,
     }
 
 
-def _restore_email_groups(groups_data):
+def _restore_notification_groups(groups_data):
     for g in groups_data:
-        group = EmailGroup.query.filter_by(name=g['name']).first()
+        group = NotificationGroup.query.filter_by(name=g['name']).first()
         if not group:
-            group = EmailGroup(name=g['name'])
+            group = NotificationGroup(name=g['name'])
             db.session.add(group)
             db.session.flush()
         group.schedule = g.get('schedule') or DEFAULT_SCHEDULE
-        EmailRecipient.query.filter_by(group_id=group.id).delete()
+        NotificationRecipient.query.filter_by(group_id=group.id).delete()
         for r in g.get('recipients', []):
-            db.session.add(EmailRecipient(group_id=group.id, email=r['email']))
+            db.session.add(NotificationRecipient(
+                group_id=group.id, email=r.get('email'), phone_number=r.get('phone_number'),
+            ))
     db.session.commit()
 
 
-def _restore_sms_groups(groups_data):
-    for g in groups_data:
-        group = SmsGroup.query.filter_by(name=g['name']).first()
-        if not group:
-            group = SmsGroup(name=g['name'])
-            db.session.add(group)
-            db.session.flush()
-        group.schedule = g.get('schedule') or DEFAULT_SCHEDULE
-        SmsRecipient.query.filter_by(group_id=group.id).delete()
-        for r in g.get('recipients', []):
-            db.session.add(SmsRecipient(group_id=group.id, phone_number=r['phone_number']))
-    db.session.commit()
-
-
-def _restore_notification_rules(rules_data, email_name_to_id, sms_name_to_id):
+def _restore_notification_rules(rules_data, group_name_to_id):
     payload = [{
         'event_type': r['event_type'],
         'email_enabled': r.get('email_enabled', False),
-        'email_group_id': email_name_to_id.get(r.get('email_group_name')),
         'sms_enabled': r.get('sms_enabled', False),
-        'sms_group_id': sms_name_to_id.get(r.get('sms_group_name')),
+        'group_id': group_name_to_id.get(r.get('group_name')),
         'notify_again_minutes': r.get('notify_again_minutes', 30),
         'sms_custom_enabled': r.get('sms_custom_enabled', False),
         'sms_custom_message': r.get('sms_custom_message'),
@@ -889,7 +825,7 @@ def _restore_notification_rules(rules_data, email_name_to_id, sms_name_to_id):
 
 def _restore_device_thresholds(rows):
     for row in rows:
-        device = DeviceSensor.query.filter_by(rack_id=row['rack_id'], unit=row['unit']).first()
+        device = DeviceSensor.query.filter_by(rack_id=row['rack_id']).first()
         if not device:
             continue
         device.min_temperature = row['min_temperature']
@@ -910,7 +846,7 @@ def _restore_settings(rows):
     row = rows[0]
     existing = Setting.query.first()
     if existing:
-        Setting.update_settings(existing.id, row['recording_seconds'])
+        Setting.update_settings(existing.id, row['recording_seconds'], row.get('auto_save_layout'))
 
 
 def _restore_smtp(data):
@@ -938,11 +874,9 @@ def restore_config_backup():
     try:
         NotificationRule.seed_defaults()
         _restore_settings(data.get('settings', []))
-        _restore_email_groups(data.get('email_groups', []))
-        _restore_sms_groups(data.get('sms_groups', []))
-        email_name_to_id = {g.name: g.id for g in EmailGroup.query.all()}
-        sms_name_to_id = {g.name: g.id for g in SmsGroup.query.all()}
-        _restore_notification_rules(data.get('notification_rules', []), email_name_to_id, sms_name_to_id)
+        _restore_notification_groups(data.get('notification_groups', []))
+        group_name_to_id = {g.name: g.id for g in NotificationGroup.query.all()}
+        _restore_notification_rules(data.get('notification_rules', []), group_name_to_id)
         _restore_device_thresholds(data.get('device_sensor_thresholds', []))
         if data.get('voltage_threshold'):
             VoltageThreshold.update(data['voltage_threshold']['min_voltage'], data['voltage_threshold']['max_voltage'])

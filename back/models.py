@@ -47,6 +47,7 @@ class Setting(db.Model):
     recording_seconds = db.Column(db.Integer, nullable=False)
     evening_test_time = db.Column(db.Time, nullable=False)
     morning_test_time = db.Column(db.Time, nullable=False)
+    auto_save_layout = db.Column(db.Boolean, nullable=False, default=False)
 
     @staticmethod
     def get_all_settings():
@@ -55,15 +56,18 @@ class Setting(db.Model):
             {
                 'id': setting.id,
                 'recording_seconds': setting.recording_seconds,
+                'auto_save_layout': setting.auto_save_layout,
             }
             for setting in settings_list
         ]
 
     @staticmethod
-    def update_settings(id, recording_seconds):
+    def update_settings(id, recording_seconds, auto_save_layout=None):
         settings = db.session.get(Setting, id)
         if settings:
             settings.recording_seconds = recording_seconds
+            if auto_save_layout is not None:
+                settings.auto_save_layout = auto_save_layout
             db.session.commit()
             return True
         return False
@@ -111,10 +115,11 @@ class Log(db.Model):
 
 
 class DeviceSensor(db.Model):
+    """Jeden czujnik temperatury/wilgotności na całą szafę (nie per-slot/unit —
+    fizycznie w szafie jest jeden czujnik środowiskowy, nie jeden na urządzenie)."""
     __tablename__ = 'device_sensors'
     id = db.Column(db.Integer, primary_key=True)
-    rack_id = db.Column(db.String(20), nullable=False)
-    unit = db.Column(db.Integer, nullable=False)
+    rack_id = db.Column(db.String(20), nullable=False, unique=True)
     temperature = db.Column(db.Float, nullable=False)
     humidity = db.Column(db.Float, nullable=False)
     updated_at = db.Column(db.DateTime, nullable=False)
@@ -136,10 +141,6 @@ class DeviceSensor(db.Model):
     highest_humidity = db.Column(db.Float, nullable=True)
     highest_humidity_at = db.Column(db.DateTime, nullable=True)
 
-    __table_args__ = (
-        db.UniqueConstraint('rack_id', 'unit', name='uq_device_sensor_rack_unit'),
-    )
-
     HISTORY_RETENTION_DAYS = 35
 
     @staticmethod
@@ -159,19 +160,18 @@ class DeviceSensor(db.Model):
             device.highest_humidity_at = now
 
     @staticmethod
-    def get_existing(rack_id, unit):
-        return DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
+    def get_existing(rack_id):
+        return DeviceSensor.query.filter_by(rack_id=rack_id).first()
 
     @staticmethod
-    def get_or_create_reading(rack_id, unit):
+    def get_or_create_reading(rack_id):
         import random
         from datetime import datetime, timedelta
 
-        device = DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
+        device = DeviceSensor.query.filter_by(rack_id=rack_id).first()
         if device is None:
             device = DeviceSensor(
                 rack_id=rack_id,
-                unit=unit,
                 temperature=round(random.uniform(20.0, 32.0), 1),
                 humidity=round(random.uniform(35.0, 75.0), 1),
                 updated_at=datetime.now(),
@@ -192,7 +192,6 @@ class DeviceSensor(db.Model):
 
         db.session.add(DeviceSensorHistory(
             rack_id=rack_id,
-            unit=unit,
             temperature=device.temperature,
             humidity=device.humidity,
             recorded_at=device.updated_at,
@@ -201,7 +200,7 @@ class DeviceSensor(db.Model):
 
         cutoff = datetime.now() - timedelta(days=DeviceSensor.HISTORY_RETENTION_DAYS)
         (DeviceSensorHistory.query
-         .filter_by(rack_id=rack_id, unit=unit)
+         .filter_by(rack_id=rack_id)
          .filter(DeviceSensorHistory.recorded_at < cutoff)
          .delete())
         db.session.commit()
@@ -209,8 +208,8 @@ class DeviceSensor(db.Model):
         return device
 
     @staticmethod
-    def clear_records(rack_id, unit):
-        device = DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
+    def clear_records(rack_id):
+        device = DeviceSensor.query.filter_by(rack_id=rack_id).first()
         if not device:
             return None
         device.lowest_temperature = device.temperature
@@ -225,15 +224,15 @@ class DeviceSensor(db.Model):
         return device
 
     @staticmethod
-    def clear_history(rack_id, unit):
-        DeviceSensorHistory.query.filter_by(rack_id=rack_id, unit=unit).delete()
+    def clear_history(rack_id):
+        DeviceSensorHistory.query.filter_by(rack_id=rack_id).delete()
         db.session.commit()
 
     @staticmethod
-    def update_thresholds(rack_id, unit, min_temperature, max_temperature, min_humidity, max_humidity,
+    def update_thresholds(rack_id, min_temperature, max_temperature, min_humidity, max_humidity,
                            min_temperature_critical, max_temperature_critical,
                            min_humidity_critical, max_humidity_critical, alert_delay_seconds):
-        device = DeviceSensor.query.filter_by(rack_id=rack_id, unit=unit).first()
+        device = DeviceSensor.query.filter_by(rack_id=rack_id).first()
         if device is None:
             return None
         device.min_temperature = min_temperature
@@ -253,7 +252,6 @@ class DeviceSensorHistory(db.Model):
     __tablename__ = 'device_sensor_history'
     id = db.Column(db.Integer, primary_key=True)
     rack_id = db.Column(db.String(20), nullable=False)
-    unit = db.Column(db.Integer, nullable=False)
     temperature = db.Column(db.Float, nullable=False)
     humidity = db.Column(db.Float, nullable=False)
     recorded_at = db.Column(db.DateTime, nullable=False)
@@ -269,23 +267,28 @@ def is_within_schedule(schedule, when):
     return index < len(schedule) and schedule[index] == '1'
 
 
-class EmailGroup(db.Model):
-    __tablename__ = 'email_groups'
+class NotificationGroup(db.Model):
+    """Jedna grupa odbiorców powiadomień, wspólna dla e-maila i SMS-a — każdy
+    członek (NotificationRecipient) ma opcjonalnie adres e-mail i/lub numer
+    telefonu (może mieć oba, albo tylko jedno). Zastępuje dawne osobne
+    EmailGroup/SmsGroup, żeby nie trzeba było utrzymywać dwóch równoległych
+    list odbiorców dla tych samych osób."""
+    __tablename__ = 'notification_groups'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), unique=True, nullable=False)
     schedule = db.Column(db.String(168), nullable=False, default=DEFAULT_SCHEDULE)
 
     @staticmethod
     def get_all_with_recipients():
-        groups = EmailGroup.query.all()
+        groups = NotificationGroup.query.all()
         return [
             {
                 'id': g.id,
                 'name': g.name,
                 'schedule': g.schedule,
                 'recipients': [
-                    {'id': r.id, 'email': r.email}
-                    for r in EmailRecipient.query.filter_by(group_id=g.id).all()
+                    {'id': r.id, 'email': r.email, 'phone_number': r.phone_number}
+                    for r in NotificationRecipient.query.filter_by(group_id=g.id).all()
                 ],
             }
             for g in groups
@@ -293,7 +296,7 @@ class EmailGroup(db.Model):
 
     @staticmethod
     def update_schedule(group_id, schedule):
-        group = db.session.get(EmailGroup, group_id)
+        group = db.session.get(NotificationGroup, group_id)
         if not group:
             return None
         group.schedule = schedule
@@ -302,35 +305,35 @@ class EmailGroup(db.Model):
 
     @staticmethod
     def add_group(name):
-        if EmailGroup.query.filter_by(name=name).first():
+        if NotificationGroup.query.filter_by(name=name).first():
             return None
-        group = EmailGroup(name=name)
+        group = NotificationGroup(name=name)
         db.session.add(group)
         db.session.commit()
         return group
 
     @staticmethod
     def delete_group(group_id):
-        group = db.session.get(EmailGroup, group_id)
+        group = db.session.get(NotificationGroup, group_id)
         if not group:
             return False
-        EmailRecipient.query.filter_by(group_id=group_id).delete()
+        NotificationRecipient.query.filter_by(group_id=group_id).delete()
         db.session.delete(group)
         db.session.commit()
         return True
 
     @staticmethod
-    def add_recipient(group_id, email):
-        if not db.session.get(EmailGroup, group_id):
+    def add_recipient(group_id, email=None, phone_number=None):
+        if not db.session.get(NotificationGroup, group_id):
             return None
-        recipient = EmailRecipient(group_id=group_id, email=email)
+        recipient = NotificationRecipient(group_id=group_id, email=email, phone_number=phone_number)
         db.session.add(recipient)
         db.session.commit()
         return recipient
 
     @staticmethod
     def delete_recipient(recipient_id):
-        recipient = db.session.get(EmailRecipient, recipient_id)
+        recipient = db.session.get(NotificationRecipient, recipient_id)
         if not recipient:
             return False
         db.session.delete(recipient)
@@ -338,87 +341,12 @@ class EmailGroup(db.Model):
         return True
 
 
-class EmailRecipient(db.Model):
-    __tablename__ = 'email_recipients'
+class NotificationRecipient(db.Model):
+    __tablename__ = 'notification_recipients'
     id = db.Column(db.Integer, primary_key=True)
-    group_id = db.Column(db.Integer, db.ForeignKey('email_groups.id'), nullable=False)
-    email = db.Column(db.String(255), nullable=False)
-
-
-class SmsGroup(db.Model):
-    __tablename__ = 'sms_groups'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(120), unique=True, nullable=False)
-    schedule = db.Column(db.String(168), nullable=False, default=DEFAULT_SCHEDULE)
-
-    @staticmethod
-    def get_all_with_recipients():
-        groups = SmsGroup.query.all()
-        return [
-            {
-                'id': g.id,
-                'name': g.name,
-                'schedule': g.schedule,
-                'recipients': [
-                    {'id': r.id, 'phone_number': r.phone_number}
-                    for r in SmsRecipient.query.filter_by(group_id=g.id).all()
-                ],
-            }
-            for g in groups
-        ]
-
-    @staticmethod
-    def update_schedule(group_id, schedule):
-        group = db.session.get(SmsGroup, group_id)
-        if not group:
-            return None
-        group.schedule = schedule
-        db.session.commit()
-        return group
-
-    @staticmethod
-    def add_group(name):
-        if SmsGroup.query.filter_by(name=name).first():
-            return None
-        group = SmsGroup(name=name)
-        db.session.add(group)
-        db.session.commit()
-        return group
-
-    @staticmethod
-    def delete_group(group_id):
-        group = db.session.get(SmsGroup, group_id)
-        if not group:
-            return False
-        SmsRecipient.query.filter_by(group_id=group_id).delete()
-        db.session.delete(group)
-        db.session.commit()
-        return True
-
-    @staticmethod
-    def add_recipient(group_id, phone_number):
-        if not db.session.get(SmsGroup, group_id):
-            return None
-        recipient = SmsRecipient(group_id=group_id, phone_number=phone_number)
-        db.session.add(recipient)
-        db.session.commit()
-        return recipient
-
-    @staticmethod
-    def delete_recipient(recipient_id):
-        recipient = db.session.get(SmsRecipient, recipient_id)
-        if not recipient:
-            return False
-        db.session.delete(recipient)
-        db.session.commit()
-        return True
-
-
-class SmsRecipient(db.Model):
-    __tablename__ = 'sms_recipients'
-    id = db.Column(db.Integer, primary_key=True)
-    group_id = db.Column(db.Integer, db.ForeignKey('sms_groups.id'), nullable=False)
-    phone_number = db.Column(db.String(20), nullable=False)
+    group_id = db.Column(db.Integer, db.ForeignKey('notification_groups.id'), nullable=False)
+    email = db.Column(db.String(255), nullable=True)
+    phone_number = db.Column(db.String(20), nullable=True)
 
 
 NOTIFICATION_EVENT_TYPES = ('fire', 'gas', 'water', 'door', 'device_threshold', 'voltage')
@@ -429,9 +357,8 @@ class NotificationRule(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     event_type = db.Column(db.String(20), unique=True, nullable=False)
     email_enabled = db.Column(db.Boolean, nullable=False, default=False)
-    email_group_id = db.Column(db.Integer, db.ForeignKey('email_groups.id'), nullable=True)
     sms_enabled = db.Column(db.Boolean, nullable=False, default=False)
-    sms_group_id = db.Column(db.Integer, db.ForeignKey('sms_groups.id'), nullable=True)
+    group_id = db.Column(db.Integer, db.ForeignKey('notification_groups.id'), nullable=True)
     notify_again_minutes = db.Column(db.Integer, nullable=False, default=30)
     sms_custom_enabled = db.Column(db.Boolean, nullable=False, default=False)
     sms_custom_message = db.Column(db.String(255), nullable=True)
@@ -453,9 +380,8 @@ class NotificationRule(db.Model):
             {
                 'event_type': r.event_type,
                 'email_enabled': r.email_enabled,
-                'email_group_id': r.email_group_id,
                 'sms_enabled': r.sms_enabled,
-                'sms_group_id': r.sms_group_id,
+                'group_id': r.group_id,
                 'notify_again_minutes': r.notify_again_minutes,
                 'sms_custom_enabled': r.sms_custom_enabled,
                 'sms_custom_message': r.sms_custom_message,
@@ -474,9 +400,8 @@ class NotificationRule(db.Model):
             if not rule:
                 continue
             rule.email_enabled = rule_data['email_enabled']
-            rule.email_group_id = rule_data.get('email_group_id')
             rule.sms_enabled = rule_data['sms_enabled']
-            rule.sms_group_id = rule_data.get('sms_group_id')
+            rule.group_id = rule_data.get('group_id')
             rule.notify_again_minutes = rule_data.get('notify_again_minutes', 30)
             rule.sms_custom_enabled = rule_data.get('sms_custom_enabled', False)
             rule.sms_custom_message = rule_data.get('sms_custom_message')
@@ -495,6 +420,7 @@ class AlarmState(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     event_type = db.Column(db.String(20), unique=True, nullable=False)
     active = db.Column(db.Boolean, nullable=False, default=False)
+    acknowledged = db.Column(db.Boolean, nullable=False, default=False)
     last_triggered_at = db.Column(db.DateTime, nullable=True)
     cleared_at = db.Column(db.DateTime, nullable=True)
 
@@ -511,6 +437,7 @@ class AlarmState(db.Model):
             {
                 'event_type': s.event_type,
                 'active': s.active,
+                'acknowledged': s.acknowledged,
                 'last_triggered_at': s.last_triggered_at.strftime('%Y-%m-%d %H:%M:%S') if s.last_triggered_at else None,
                 'cleared_at': s.cleared_at.strftime('%Y-%m-%d %H:%M:%S') if s.cleared_at else None,
             }
@@ -527,17 +454,33 @@ class AlarmState(db.Model):
             state = AlarmState(event_type=event_type)
             db.session.add(state)
         state.active = True
+        state.acknowledged = False
         state.last_triggered_at = datetime.now()
         db.session.commit()
 
     @staticmethod
     def clear(event_type):
+        """Dezaktywuje alarm — wywoływane wewnętrznie, gdy odczyt sam wróci do
+        normy. Nie jest to już akcja użytkownika (patrz acknowledge())."""
         from datetime import datetime
         state = AlarmState.query.filter_by(event_type=event_type).first()
         if not state:
             return False
         state.active = False
+        state.acknowledged = False
         state.cleared_at = datetime.now()
+        db.session.commit()
+        return True
+
+    @staticmethod
+    def acknowledge(event_type):
+        """Akcja użytkownika (przycisk "Potwierdź alarm") — wycisza dalsze
+        powiadomienia, ale NIE dezaktywuje alarmu. Alarm sam zgaśnie, gdy
+        czujnik faktycznie wróci do normy (patrz clear())."""
+        state = AlarmState.query.filter_by(event_type=event_type).first()
+        if not state:
+            return False
+        state.acknowledged = True
         db.session.commit()
         return True
 
@@ -549,57 +492,66 @@ class DeviceAlarmState(db.Model):
     __tablename__ = 'device_alarm_states'
     id = db.Column(db.Integer, primary_key=True)
     rack_id = db.Column(db.String(20), nullable=False)
-    unit = db.Column(db.Integer, nullable=False)
     metric = db.Column(db.String(20), nullable=False)
     severity = db.Column(db.String(20), nullable=False, default='non_critical')
     active = db.Column(db.Boolean, nullable=False, default=False)
+    acknowledged = db.Column(db.Boolean, nullable=False, default=False)
     last_triggered_at = db.Column(db.DateTime, nullable=True)
     cleared_at = db.Column(db.DateTime, nullable=True)
     pending_since = db.Column(db.DateTime, nullable=True)
     return_notified = db.Column(db.Boolean, nullable=False, default=False)
 
     __table_args__ = (
-        db.UniqueConstraint('rack_id', 'unit', 'metric', 'severity', name='uq_device_alarm_rack_unit_metric_severity'),
+        db.UniqueConstraint('rack_id', 'metric', 'severity', name='uq_device_alarm_rack_metric_severity'),
     )
 
     @staticmethod
-    def get(rack_id, unit, metric, severity):
-        return DeviceAlarmState.query.filter_by(rack_id=rack_id, unit=unit, metric=metric, severity=severity).first()
+    def get(rack_id, metric, severity):
+        return DeviceAlarmState.query.filter_by(rack_id=rack_id, metric=metric, severity=severity).first()
 
     @staticmethod
-    def get_or_create(rack_id, unit, metric, severity):
-        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
+    def get_or_create(rack_id, metric, severity):
+        state = DeviceAlarmState.get(rack_id, metric, severity)
         if not state:
-            state = DeviceAlarmState(rack_id=rack_id, unit=unit, metric=metric, severity=severity)
+            state = DeviceAlarmState(rack_id=rack_id, metric=metric, severity=severity)
             db.session.add(state)
             db.session.commit()
         return state
 
     @staticmethod
-    def is_active(rack_id, unit, metric, severity):
-        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
+    def is_active(rack_id, metric, severity):
+        state = DeviceAlarmState.get(rack_id, metric, severity)
         return bool(state and state.active)
 
     @staticmethod
-    def trigger(rack_id, unit, metric, severity):
+    def is_acknowledged(rack_id, metric, severity):
+        state = DeviceAlarmState.get(rack_id, metric, severity)
+        return bool(state and state.acknowledged)
+
+    @staticmethod
+    def trigger(rack_id, metric, severity):
         from datetime import datetime
-        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
+        state = DeviceAlarmState.get(rack_id, metric, severity)
         if not state:
-            state = DeviceAlarmState(rack_id=rack_id, unit=unit, metric=metric, severity=severity)
+            state = DeviceAlarmState(rack_id=rack_id, metric=metric, severity=severity)
             db.session.add(state)
         state.active = True
+        state.acknowledged = False
         state.last_triggered_at = datetime.now()
         state.pending_since = None
         state.return_notified = False
         db.session.commit()
 
     @staticmethod
-    def clear(rack_id, unit, metric, severity):
-        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
+    def clear(rack_id, metric, severity):
+        """Dezaktywuje alarm — wywoływane wewnętrznie, gdy odczyt sam wróci do
+        normy. Nie jest to już akcja użytkownika (patrz acknowledge())."""
+        state = DeviceAlarmState.get(rack_id, metric, severity)
         if not state:
             return False
         from datetime import datetime
         state.active = False
+        state.acknowledged = False
         state.cleared_at = datetime.now()
         state.pending_since = None
         state.return_notified = False
@@ -607,24 +559,36 @@ class DeviceAlarmState(db.Model):
         return True
 
     @staticmethod
-    def mark_pending(rack_id, unit, metric, severity):
+    def acknowledge(rack_id, metric, severity):
+        """Akcja użytkownika (przycisk "Potwierdź alarm") — wycisza dalsze
+        powiadomienia, ale NIE dezaktywuje alarmu. Alarm sam zgaśnie, gdy
+        odczyt faktycznie wróci do normy (patrz clear())."""
+        state = DeviceAlarmState.get(rack_id, metric, severity)
+        if not state:
+            return False
+        state.acknowledged = True
+        db.session.commit()
+        return True
+
+    @staticmethod
+    def mark_pending(rack_id, metric, severity):
         from datetime import datetime
-        state = DeviceAlarmState.get_or_create(rack_id, unit, metric, severity)
+        state = DeviceAlarmState.get_or_create(rack_id, metric, severity)
         if state.pending_since is None:
             state.pending_since = datetime.now()
             db.session.commit()
         return state.pending_since
 
     @staticmethod
-    def clear_pending(rack_id, unit, metric, severity):
-        state = DeviceAlarmState.get(rack_id, unit, metric, severity)
+    def clear_pending(rack_id, metric, severity):
+        state = DeviceAlarmState.get(rack_id, metric, severity)
         if state and state.pending_since is not None:
             state.pending_since = None
             db.session.commit()
 
     @staticmethod
-    def mark_return_notified(rack_id, unit, metric, severity):
-        state = DeviceAlarmState.get_or_create(rack_id, unit, metric, severity)
+    def mark_return_notified(rack_id, metric, severity):
+        state = DeviceAlarmState.get_or_create(rack_id, metric, severity)
         state.return_notified = True
         db.session.commit()
 
@@ -632,6 +596,10 @@ class DeviceAlarmState(db.Model):
 def alarm_should_fire(state, notify_again_minutes, force=False):
     if force or not state or not state.active:
         return True
+    if state.acknowledged:
+        # Użytkownik potwierdził — cicho, dopóki alarm sam nie zgaśnie
+        # (powrót do normy) i nie wywoła się od nowa.
+        return False
     if state.last_triggered_at is None:
         return True
     from datetime import datetime

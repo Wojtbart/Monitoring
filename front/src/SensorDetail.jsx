@@ -53,7 +53,7 @@ function GaugeBar({ value, minCrit, maxCrit, minNonCrit, maxNonCrit, unit }) {
 }
 
 export default function SensorDetail() {
-    const { rackId, unit, type } = useParams();
+    const { rackId, type } = useParams();
     const navigate = useNavigate();
     const cfg = TYPE_CONFIG[type] || TYPE_CONFIG.temperature;
     const Icon = cfg.icon;
@@ -93,20 +93,20 @@ export default function SensorDetail() {
     useEffect(() => {
         const fetchCurrent = async () => {
             try {
-                const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}/${unit}`);
+                const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}`);
                 setCurrent(data);
             } catch (_) {}
         };
         fetchCurrent();
         const iv = setInterval(fetchCurrent, 5000);
         return () => clearInterval(iv);
-    }, [rackId, unit]);
+    }, [rackId]);
 
     useEffect(() => {
         const fetchHistory = async () => {
             try {
                 const params = range === "live" ? {} : { range };
-                const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}/${unit}/history`, { params });
+                const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}/history`, { params });
                 if (range === "live") {
                     const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
                     setHistory(data.history.filter(row => new Date(row.recorded_at.replace(" ", "T")).getTime() >= tenMinutesAgo));
@@ -118,7 +118,7 @@ export default function SensorDetail() {
         fetchHistory();
         const iv = setInterval(fetchHistory, 20000);
         return () => clearInterval(iv);
-    }, [rackId, unit, range]);
+    }, [rackId, range]);
 
     const value = current ? current[type] : null;
     const min = current ? current[fieldName("non_critical").min] : null;
@@ -152,7 +152,7 @@ export default function SensorDetail() {
         };
         try {
             const { data } = await axios.put(
-                `${API_BASE}/device-sensors/${rackId}/${unit}/thresholds`,
+                `${API_BASE}/device-sensors/${rackId}/thresholds`,
                 payload,
                 { headers: { Authorization: `Bearer ${accessToken}` } },
             );
@@ -171,7 +171,7 @@ export default function SensorDetail() {
 
     const handleClearRecords = async () => {
         try {
-            const { data } = await axios.delete(`${API_BASE}/device-sensors/${rackId}/${unit}/records`, {
+            const { data } = await axios.delete(`${API_BASE}/device-sensors/${rackId}/records`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             setCurrent(data);
@@ -185,7 +185,7 @@ export default function SensorDetail() {
     const handleClearGraph = async () => {
         if (!window.confirm("Usunąć historię wykresu dla tego czujnika?")) return;
         try {
-            await axios.delete(`${API_BASE}/device-sensors/${rackId}/${unit}/history`, {
+            await axios.delete(`${API_BASE}/device-sensors/${rackId}/history`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             setHistory([]);
@@ -197,6 +197,7 @@ export default function SensorDetail() {
     };
 
     const alarmActive = (severity) => current ? current[`alarm_active_${type}_${severity}`] : false;
+    const alarmAcknowledged = (severity) => current ? current[`alarm_acknowledged_${type}_${severity}`] : false;
 
     const handleToggleEnabled = async (event) => {
         const next = event.target.checked;
@@ -206,7 +207,7 @@ export default function SensorDetail() {
                 { enabled: next },
                 { headers: { Authorization: `Bearer ${accessToken}` } },
             );
-            const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}/${unit}`);
+            const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}`);
             setCurrent(data);
         } catch (error) {
             setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd zapisu." });
@@ -216,7 +217,7 @@ export default function SensorDetail() {
 
     const handleSimulate = async (severity) => {
         try {
-            await axios.post(`${API_BASE}/device-sensors/${rackId}/${unit}/${type}/${severity}/simulate`, {}, {
+            await axios.post(`${API_BASE}/device-sensors/${rackId}/${type}/${severity}/simulate`, {}, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             setAlarmStatus({ type: "success", message: "Alarm testowy wywołany — sprawdź powiadomienia." });
@@ -226,15 +227,15 @@ export default function SensorDetail() {
         setTimeout(() => setAlarmStatus(null), 3000);
     };
 
-    const handleClearAlarm = async (severity) => {
+    const handleAcknowledgeAlarm = async (severity) => {
         try {
-            await axios.delete(`${API_BASE}/device-sensors/${rackId}/${unit}/${type}/${severity}/clear`, {
+            await axios.delete(`${API_BASE}/device-sensors/${rackId}/${type}/${severity}/acknowledge`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
-            setCurrent(prev => prev && { ...prev, [`alarm_active_${type}_${severity}`]: false });
-            setAlarmStatus({ type: "success", message: "Alarm skasowany." });
+            setCurrent(prev => prev && { ...prev, [`alarm_acknowledged_${type}_${severity}`]: true });
+            setAlarmStatus({ type: "success", message: "Alarm potwierdzony." });
         } catch (error) {
-            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd kasowania alarmu." });
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd potwierdzania alarmu." });
         }
         setTimeout(() => setAlarmStatus(null), 2500);
     };
@@ -248,7 +249,7 @@ export default function SensorDetail() {
                     </IconButton>
                     <Box>
                         <Typography variant="h5" fontWeight="bold" sx={{ color: "#1a1a2e" }}>
-                            Szafa {rackId} — Unit {unit}
+                            Szafa {rackId}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                             {cfg.label} · wartość co 5s · wykres odświeżany co 20s
@@ -326,6 +327,7 @@ export default function SensorDetail() {
 
                 {SEVERITIES.map(sev => {
                     const active = alarmActive(sev.key);
+                    const acknowledged = alarmAcknowledged(sev.key);
                     const f = fieldName(sev.key);
                     return (
                         <Box key={sev.key} sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
@@ -335,11 +337,17 @@ export default function SensorDetail() {
 
                             <Box sx={{
                                 p: 1.5, mb: 1.5, borderRadius: 1.5,
-                                bgcolor: active ? "#fdecea" : "#eaf6ec",
-                                border: active ? "1px solid #e53935" : "1px solid #2e7d32",
+                                bgcolor: !active ? "#eaf6ec" : acknowledged ? "#fff8e1" : "#fdecea",
+                                border: !active ? "1px solid #2e7d32" : acknowledged ? "1px solid #f9a825" : "1px solid #e53935",
                             }}>
-                                <Typography fontWeight="bold" sx={{ color: active ? "#c62828" : "#2e7d32" }}>
-                                    {active ? "ALARM — przekroczono próg, wymaga skasowania" : "Brak alarmu"}
+                                <Typography fontWeight="bold" sx={{
+                                    color: !active ? "#2e7d32" : acknowledged ? "#8a6d00" : "#c62828",
+                                }}>
+                                    {!active
+                                        ? "Brak alarmu"
+                                        : acknowledged
+                                            ? "Potwierdzony — czeka na powrót do normy"
+                                            : "ALARM — przekroczono próg, wymaga potwierdzenia"}
                                 </Typography>
                             </Box>
 
@@ -348,8 +356,8 @@ export default function SensorDetail() {
                                     Symuluj alarm (test)
                                 </Button>
                                 <Button size="small" variant="contained" color="error"
-                                    onClick={() => handleClearAlarm(sev.key)} disabled={!active}>
-                                    Skasuj alarm
+                                    onClick={() => handleAcknowledgeAlarm(sev.key)} disabled={!active || acknowledged}>
+                                    Potwierdź alarm
                                 </Button>
                             </Box>
 

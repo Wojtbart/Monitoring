@@ -65,3 +65,22 @@ def test_smtp_test_endpoint_calls_send_email(client, app, monkeypatch):
                         headers={'Authorization': f'Bearer {token}'})
     assert resp.status_code == 200
     assert calls == [(['a@b.com'], 'Test SMTP — Monitoring System')]
+
+
+def test_smtp_test_endpoint_surfaces_send_error(client, app, monkeypatch):
+    def _boom(*a, **k):
+        raise RuntimeError('Authentication failed')
+    monkeypatch.setattr('notifications.send_email', _boom)
+    token = _login(client, app)
+    resp = client.post('/smtp-settings/test', json={'to_address': 'a@b.com'},
+                        headers={'Authorization': f'Bearer {token}'})
+    assert resp.status_code == 502
+    assert 'Authentication failed' in resp.get_json()['message']
+
+
+def test_smtp_test_endpoint_reports_unconfigured(client, app):
+    token = _login(client, app)
+    resp = client.post('/smtp-settings/test', json={'to_address': 'a@b.com'},
+                        headers={'Authorization': f'Bearer {token}'})
+    assert resp.status_code == 502
+    assert 'SMTP nieskonfigurowany' in resp.get_json()['message']

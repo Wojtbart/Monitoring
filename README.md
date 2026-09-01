@@ -22,6 +22,7 @@ front/src/
 ├── main.jsx            punkt wejścia (ReactDOM.render)
 ├── App.jsx              routing (react-router-dom)
 ├── Layout.jsx / .css     wspólny layout (pasek górny, menu boczne, wylogowanie)
+├── RealTimeDataContext.jsx  wspólny poller /real-time-data (co 5s) — jedno źródło dla wszystkich stron, żeby nie dublować requestów
 ├── api.js                API_BASE (adres backendu, z .env)
 ├── LoginPage.jsx          logowanie
 ├── RegisterPage.jsx       rejestracja użytkownika (tylko admin)
@@ -29,30 +30,31 @@ front/src/
 ├── FloorPlan.jsx          rzut serwerowni (react-konva), strona główna ("/") — czujniki pożaru/gazu/ruchu z regulacją wysokości montażu
 ├── RackVisual3D.jsx       wizualny podgląd szafy (panel boczny w widoku rack)
 ├── ServerRack.jsx         widok pojedynczej szafy rack
-├── SensorDetail.jsx       szczegóły + historia czujnika per-urządzenie w szafie (recharts, progi Non-Critical/Critical, opóźnienie alarmu)
-├── RoomSensorDetail.jsx   szczegóły czujnika pomieszczenia (pożar/gaz/drzwi/zalanie) — symulacja i kasowanie alarmu
+├── SensorDetail.jsx       szczegóły + historia czujnika temperatury/wilgotności szafy (recharts, progi Non-Critical/Critical, opóźnienie alarmu)
+├── RoomSensorDetail.jsx   szczegóły czujnika pomieszczenia (pożar/gaz/drzwi/zalanie) — symulacja i potwierdzanie alarmu
 ├── VoltageDetail.jsx      strona napięcia zasilania — progi, alarm, przełącznik "czujnik podłączony"
 ├── Camera.jsx             podgląd kamery (MJPEG) + sterowanie nagrywaniem
 ├── SavedVideos.jsx        lista zapisanych nagrań
 ├── Settings.jsx           ustawienia systemowe, SMTP, grupy/reguły powiadomień, kopia zapasowa konfiguracji
 ├── Logs.jsx / .css        logi systemowe
-├── Help.jsx               strona pomocy ("/pomoc")
+├── Help.jsx               strona pomocy ("/help")
 └── assets/monitor.png     ikona urządzenia w widoku rack
 ```
 
-Routing (`App.jsx`): `/loginPage`, `/registerUser`, `/testDevice`, `/camera`, `/savedVideos`, `/settings`, `/logs`, `/rack/:rackId`, `/rack/:rackId/unit/:unit/sensor/:type`, `/room-sensor/:type`, `/napiecie`, `/pomoc`, `/rzut` i `/` (oba renderują `FloorPlan`).
+Routing (`App.jsx`), jednolicie angielski kebab-case: `/login`, `/register-user`, `/test-device`, `/camera`, `/saved-videos`, `/settings`, `/logs`, `/rack/:rackId`, `/rack/:rackId/sensor/:type`, `/room-sensor/:type`, `/voltage`, `/help`, `/floor-plan` i `/` (oba renderują `FloorPlan`).
 
 ## Funkcje
 
-- **Widok rzutu serwerowni** — graficzna wizualizacja pomieszczenia z szafami rack i czujnikami (pożar, gaz, drzwi, ruch, zalanie), strona główna aplikacji. Czujniki pożaru/gazu/ruchu można kliknięciem zaznaczyć i regulować wysokość montażu strzałkami ▲/▼, niezależnie od przesuwania w poziomie; czujnik zalania stoi zawsze na podłodze.
-- **Widok szafy (rack)** — konfigurowalne sloty U z urządzeniami, wizualny podgląd szafy, ping adresu management.
-- **Czujniki per-urządzenie** — każdy serwer w szafie ma własny odczyt temperatury/wilgotności, dwa niezależne poziomy progu (Non-Critical/Critical), opóźnienie alarmu (debounce), powiadomienie o powrocie do normy, najniższy/najwyższy zanotowany odczyt i historię (wykres, zakres na żywo/24h/tydzień/miesiąc, retencja 35 dni). Ponieważ nie ma realnego czujnika per-slot (tylko mock), globalny przełącznik "Czujnik podłączony" pozwala go wyłączyć, żeby nie generował fałszywych alarmów.
-- **Napięcie zasilania** — osobna strona (`/napiecie`) z odczytem, progami min/max, alarmem i tym samym przełącznikiem "Czujnik podłączony" (mock, dopóki nie podłączony realny czujnik/ADC).
+- **Widok rzutu serwerowni** — graficzna wizualizacja pomieszczenia z szafami rack i czujnikami (pożar, gaz, drzwi, ruch, zalanie), strona główna aplikacji. Czujniki przesuwa się przeciąganiem (X i głębokość naraz); pożar/gaz/ruch mają warianty montażu sufit/ściana, zalanie zawsze na podłodze. Prawy klik na czujniku otwiera menu "Konfiguruj"/"Usuń"; prawy klik na szafie otwiera menu "Zmień nazwę"/"Usuń" — usunięcie tylko chowa szafę z rzutu (lista 6 szaf jest stała w kodzie, nic nie kasuje na trwałe), przywracalne przyciskiem "Przywróć usunięte szafy" w pasku.
+- **Alarmy (wszystkie typy)** — nigdy nie kasuje się ich ręcznie. Przycisk "Potwierdź alarm" tylko wycisza kolejne powiadomienia (e-mail/SMS/log); sam alarm dezaktywuje się automatycznie dopiero, gdy odczyt faktycznie wróci do normy — wtedy też, opcjonalnie, wychodzi jednorazowe powiadomienie o powrocie.
+- **Widok szafy (rack)** — konfigurowalne sloty U z urządzeniami (typ, nazwa, wysokość co 0,5U, adres management + ping), wizualny podgląd szafy z etykietą typu urządzenia na każdym bloczku (od 1U w górę), klikalna nazwa szafy w nagłówku (ta sama nazwa co w menu kontekstowym na rzucie, zmiana w jednym miejscu widoczna wszędzie).
+- **Czujnik temperatury/wilgotności na szafę** — jeden czujnik środowiskowy na całą szafę (fizycznie w szafie stoi jedno urządzenie pomiarowe, nie jedno na serwer), dwa niezależne poziomy progu (Non-Critical/Critical), opóźnienie alarmu (debounce), powiadomienie o powrocie do normy, najniższy/najwyższy zanotowany odczyt i historię (wykres, zakres na żywo/24h/tydzień/miesiąc, retencja 35 dni). Na rzucie serwerowni każda szafa ma dwie klikalne ikonki 🌡️/💧 z bieżącym odczytem, prowadzące bezpośrednio do historii tego czujnika; strona samej szafy (`/rack/:rackId`) pokazuje ten sam odczyt i baner alarmu, niezależny od czujnika pomieszczenia. Ponieważ nie ma jeszcze realnego czujnika (tylko mock), globalny przełącznik "Czujnik podłączony" pozwala go wyłączyć, żeby nie generował fałszywych alarmów.
+- **Napięcie zasilania** — osobna strona (`/voltage`) z odczytem, progami min/max, alarmem i tym samym przełącznikiem "Czujnik podłączony" (mock, dopóki nie podłączony realny czujnik/ADC).
 - **Kamera** — podgląd na żywo (MJPEG stream, OpenCV lub picamera2 na Raspberry Pi), ręczne i automatyczne nagrywanie (przy wykryciu ruchu), transkodowanie do H.264 (ffmpeg) dla kompatybilności z przeglądarką, lista zapisanych nagrań pogrupowana po dniach z możliwością odtworzenia/pobrania/usunięcia.
 - **Logi systemowe** — jedna wspólna historia zdarzeń (alarmy, logowania/wylogowania, start systemu) z filtrowaniem po sensorze, sortowaniem, zaznaczaniem i eksportem do CSV.
 - **Zarządzanie użytkownikami** — rejestracja (tylko admin), lista kont z uprawnieniami, usuwanie (z ochroną przed samousunięciem).
 - **Ustawienia** — czas do zatrzymania nagrywania, konfiguracja SMTP (host/port/login/hasło/nadawca, test wysyłki), grupy i reguły powiadomień, kopia zapasowa konfiguracji (eksport/import JSON).
-- **Powiadomienia** — grupy odbiorców mailowych i SMS z własnym harmonogramem wysyłki (dzień×godzina), reguły per zdarzenie (pożar/gaz/zalanie/drzwi/próg temp.-wilg. szafy/napięcie) z opcjonalnym własnym tematem e-maila, załącznikiem zdjęcia z kamery i własną treścią SMS. E-mail wysyłany realnie przez SMTP; SMS domyślnie zamockowany (log w konsoli), z gotowym backendem na moduł GSM SIM800L (`SMS_BACKEND=sim800`).
+- **Powiadomienia** — jedna grupa odbiorców na oba kanały naraz (każdy odbiorca może mieć e-mail i/lub numer telefonu), z własnym harmonogramem wysyłki (dzień×godzina, domyślnie rozwinięty w UI); reguły per zdarzenie (pożar/gaz/zalanie/drzwi/próg temp.-wilg. szafy/napięcie) osobno włączają e-mail i SMS, z opcjonalnym własnym tematem e-maila, załącznikiem zdjęcia z kamery i własną treścią SMS. Grupy odróżnione kolorami, tooltips i podpowiedzi w UI tłumaczą zasady działania reguł/harmonogramu. E-mail wysyłany realnie przez SMTP (test i alarmy używają wspólnego szablonu z powitaniem/stopką, żeby rzadziej trafiać do SPAM-u); SMS domyślnie zamockowany (log w konsoli), z gotowym backendem na moduł GSM SIM800L (`SMS_BACKEND=sim800`).
 
 ## Uruchomienie
 
@@ -87,9 +89,9 @@ Testy znajdują się w `back/tests/` (konfiguracja w `back/tests/pytest.ini`).
 
 ## Baza danych
 
-SQLite, plik lokalny w `back/instance/monitoring.db` (nieśledzony w gicie — zawiera lokalne dane, w tym hashe haseł). Tabele: `users`, `layouts`, `settings`, `logs`, `device_sensors`, `device_sensor_history`, `device_sensor_settings`, `email_groups`, `email_recipients`, `sms_groups`, `sms_recipients`, `notification_rules`, `alarm_states`, `device_alarm_states`, `voltage_thresholds`, `smtp_settings`.
+SQLite, plik lokalny w `back/instance/monitoring.db` (nieśledzony w gicie — zawiera lokalne dane, w tym hashe haseł). Tabele: `users`, `layouts`, `settings`, `logs`, `device_sensors`, `device_sensor_history`, `device_sensor_settings`, `notification_groups`, `notification_recipients`, `notification_rules`, `alarm_states`, `device_alarm_states`, `voltage_thresholds`, `smtp_settings`.
 
-Uwaga: `db.create_all()` (wywoływane przy starcie) tworzy tylko brakujące tabele, nie dodaje kolumn do istniejących — dodanie pola do modelu na już działającej instalacji (np. produkcyjnej na Raspberry Pi) wymaga ręcznego `ALTER TABLE`. Patrz `docs/raspberry-pi-deployment.md`, sekcja 7j, dla przykładu.
+Uwaga: `db.create_all()` (wywoływane przy starcie) tworzy tylko brakujące tabele, nie dodaje kolumn do istniejących — dodanie pola do modelu na już działającej instalacji (np. produkcyjnej na Raspberry Pi) wymaga ręcznego `ALTER TABLE`, a usunięcie pola (jak przy przejściu na jeden `DeviceSensor` per szafa) wymaga dropu i odtworzenia tabeli. Patrz `docs/raspberry-pi-deployment.md`, sekcje 7j–7n, dla przykładów. Jednorazowe skrypty migracji danych (nie schematu) są w `back/migrations/` (np. `merge_notification_groups.py`).
 
 ## Zmienne środowiskowe
 
@@ -103,7 +105,7 @@ Pełny, sprawdzony w praktyce przewodnik (gunicorn+nginx, picamera2, podłączen
 
 ## Znane ograniczenia
 
-- Czujniki pomieszczenia (temperatura/wilgotność, drzwi, woda, ruch, gaz, pożar) domyślnie mockowane losowo (Windows/dev); na wdrożonym Raspberry Pi podłączone do realnego GPIO/DHT22 przez `<NAZWA>_BACKEND` w `.env` (patrz wyżej). Napięcie zasilania i temperatura/wilgotność per-slot w szafie (`DeviceSensor`) pozostają czystym mockiem (nie ma tam realnego czujnika) — mają globalny przełącznik "Czujnik podłączony" do wyłączenia fałszywych alarmów, gdyby to przeszkadzało.
+- Czujniki pomieszczenia (temperatura/wilgotność, drzwi, woda, ruch, gaz, pożar) domyślnie mockowane losowo (Windows/dev); na wdrożonym Raspberry Pi podłączone do realnego GPIO/DHT22 przez `<NAZWA>_BACKEND` w `.env` (patrz wyżej). Napięcie zasilania i temperatura/wilgotność szafy (`DeviceSensor`, jeden czujnik na całą szafę) pozostają czystym mockiem (nie ma tam realnego czujnika) — mają globalny przełącznik "Czujnik podłączony" do wyłączenia fałszywych alarmów, gdyby to przeszkadzało.
 - Nazwy tras backendu mieszają konwencje RPC/REST w kilku miejscach (np. historyczne endpointy sprzed refaktoryzacji) — do ujednolicenia przy kolejnej refaktoryzacji API.
 - `npm audit` we `front/` zgłasza 8 podatności (wszystkie high), w zależnościach pośrednich:
   - `brace-expansion` przez `eslint`/`minimatch` (tylko devDependency, nie trafia do builda produkcyjnego) — wymaga `npm audit fix --force` (breaking change: eslint 10).

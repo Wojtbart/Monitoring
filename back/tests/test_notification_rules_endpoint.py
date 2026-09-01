@@ -1,5 +1,5 @@
 from werkzeug.security import generate_password_hash
-from models import User, NotificationRule, EmailGroup
+from models import User, NotificationRule, NotificationGroup
 
 
 def _login(client, app):
@@ -12,6 +12,22 @@ def _login(client, app):
 def _seed(app):
     with app.app_context():
         NotificationRule.seed_defaults()
+
+
+def _base_rules(overrides=None):
+    rules = [
+        {'event_type': 'fire', 'email_enabled': False, 'sms_enabled': False, 'group_id': None},
+        {'event_type': 'gas', 'email_enabled': False, 'sms_enabled': False, 'group_id': None},
+        {'event_type': 'water', 'email_enabled': False, 'sms_enabled': False, 'group_id': None},
+        {'event_type': 'door', 'email_enabled': False, 'sms_enabled': False, 'group_id': None},
+        {'event_type': 'device_threshold', 'email_enabled': False, 'sms_enabled': False, 'group_id': None},
+        {'event_type': 'voltage', 'email_enabled': False, 'sms_enabled': False, 'group_id': None},
+    ]
+    if overrides:
+        for r in rules:
+            if r['event_type'] in overrides:
+                r.update(overrides[r['event_type']])
+    return rules
 
 
 def test_get_rules_returns_seeded_six(client, app):
@@ -40,22 +56,16 @@ def test_update_rules_success(client, app):
     _seed(app)
     token = _login(client, app)
     with app.app_context():
-        group = EmailGroup.add_group('IT')
+        group = NotificationGroup.add_group('IT')
         group_id = group.id
-    payload = {'rules': [
-        {'event_type': 'fire', 'email_enabled': True, 'email_group_id': group_id, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'gas', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'water', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'door', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'device_threshold', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'voltage', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-    ]}
+    payload = {'rules': _base_rules({'fire': {'email_enabled': True, 'sms_enabled': True, 'group_id': group_id}})}
     resp = client.put('/notification-rules', json=payload, headers={'Authorization': f'Bearer {token}'})
     assert resp.status_code == 200
     rules = client.get('/notification-rules').get_json()['rules']
     fire_rule = next(r for r in rules if r['event_type'] == 'fire')
     assert fire_rule['email_enabled'] is True
-    assert fire_rule['email_group_id'] == group_id
+    assert fire_rule['sms_enabled'] is True
+    assert fire_rule['group_id'] == group_id
 
 
 def test_update_rules_rejects_wrong_count(client, app):
@@ -68,13 +78,6 @@ def test_update_rules_rejects_wrong_count(client, app):
 def test_update_rules_rejects_unknown_group(client, app):
     _seed(app)
     token = _login(client, app)
-    payload = {'rules': [
-        {'event_type': 'fire', 'email_enabled': True, 'email_group_id': 999, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'gas', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'water', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'door', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'device_threshold', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-        {'event_type': 'voltage', 'email_enabled': False, 'email_group_id': None, 'sms_enabled': False, 'sms_group_id': None},
-    ]}
+    payload = {'rules': _base_rules({'fire': {'email_enabled': True, 'group_id': 999}})}
     resp = client.put('/notification-rules', json=payload, headers={'Authorization': f'Bearer {token}'})
     assert resp.status_code == 400

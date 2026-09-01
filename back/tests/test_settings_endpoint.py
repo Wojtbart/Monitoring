@@ -50,3 +50,25 @@ def test_update_settings_updates_recording_seconds_only(client, app):
 
     updated = client.get('/settings').get_json()['settings'][0]
     assert updated['recording_seconds'] == 45
+
+
+def test_get_settings_defaults_auto_save_layout_to_false(client, app):
+    _seed_settings(app)
+    settings = client.get('/settings').get_json()['settings'][0]
+    assert settings['auto_save_layout'] is False
+
+
+def test_update_settings_can_enable_auto_save_layout(client, app):
+    settings_id = _seed_settings(app)
+    token = _login(client, app)
+    app_module.sensor = _FakeSensor()
+
+    resp = client.put(
+        '/settings',
+        json={'id': settings_id, 'recording_seconds': 30, 'auto_save_layout': True},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert resp.status_code == 200
+
+    updated = client.get('/settings').get_json()['settings'][0]
+    assert updated['auto_save_layout'] is True

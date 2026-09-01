@@ -24,7 +24,7 @@ const C = {
 
 function pts(arr) { return arr.flatMap(p => [p.x, p.y]); }
 
-export default function RackVisual3D({ slots, rackSize, rackLabel, width = 190, onUnitClick }) {
+export default function RackVisual3D({ slots, rackSize, rackLabel, width = 190 }) {
     const bodyH = rackSize * ROW_H;
     const stageW = width + DEPTH + 4;
     const stageH = bodyH + DEPTH + 30;
@@ -54,30 +54,21 @@ export default function RackVisual3D({ slots, rackSize, rackLabel, width = 190, 
                     const isEmpty = slot.type === "empty";
                     const h       = (slot.height || 1) * ROW_H;
                     const y       = fl.y + (slot.unit - 1) * ROW_H;
+                    // Etykieta typu urządzenia na bloczku — tylko od 1U w
+                    // górę, poniżej tego nie ma miejsca na czytelny tekst.
+                    const showLabel = !isEmpty && (slot.height || 1) >= 1;
                     return (
                         <Group key={slot.unit}>
                             <Rect x={fl.x + 1} y={y} width={width - 2} height={h}
                                 fill={isEmpty ? "transparent" : dtype.color}
                                 opacity={isEmpty ? 1 : 0.85} />
-                            <Line points={[fl.x, y, fl.x + width, y]} stroke={C.unitLine} strokeWidth={0.5} />
-                            {!isEmpty && (
-                                <>
-                                    <Group
-                                        onClick={() => onUnitClick && onUnitClick(slot.unit, "temperature")}
-                                        onTap={() => onUnitClick && onUnitClick(slot.unit, "temperature")}
-                                    >
-                                        <Text text="🌡️" x={fl.x + width - 34} y={y + h / 2 - 7}
-                                            width={16} align="center" fontSize={11} />
-                                    </Group>
-                                    <Group
-                                        onClick={() => onUnitClick && onUnitClick(slot.unit, "humidity")}
-                                        onTap={() => onUnitClick && onUnitClick(slot.unit, "humidity")}
-                                    >
-                                        <Text text="💧" x={fl.x + width - 18} y={y + h / 2 - 7}
-                                            width={16} align="center" fontSize={11} />
-                                    </Group>
-                                </>
+                            {showLabel && (
+                                <Text text={dtype.label} x={fl.x + 3} y={y + h / 2 - 4}
+                                    width={width - 6} align="center" fontSize={8}
+                                    fill="#fff" fontStyle="bold"
+                                    shadowColor="#000" shadowBlur={2} shadowOpacity={0.8} />
                             )}
+                            <Line points={[fl.x, y, fl.x + width, y]} stroke={C.unitLine} strokeWidth={0.5} />
                         </Group>
                     );
                 })}

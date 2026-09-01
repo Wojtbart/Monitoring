@@ -70,6 +70,43 @@ conn.close()
 print('OK')
 "
 
+Migracja "potwierdzanie zamiast kasowania alarmu" (acknowledged, 2 tabele):
+  python3 -c "
+import sqlite3
+conn = sqlite3.connect('/home/rpi/Monitoring/back/instance/monitoring.db')
+conn.execute('ALTER TABLE alarm_states ADD COLUMN acknowledged BOOLEAN NOT NULL DEFAULT 0;')
+conn.execute('ALTER TABLE device_alarm_states ADD COLUMN acknowledged BOOLEAN NOT NULL DEFAULT 0;')
+conn.commit()
+conn.close()
+print('OK')
+"
+
+Migracja "automatyczny zapis układu" (auto_save_layout w settings):
+  python3 -c "
+import sqlite3
+conn = sqlite3.connect('/home/rpi/Monitoring/back/instance/monitoring.db')
+conn.execute('ALTER TABLE settings ADD COLUMN auto_save_layout BOOLEAN NOT NULL DEFAULT 0;')
+conn.commit()
+conn.close()
+print('OK')
+"
+
+Migracja "wspólne grupy powiadomień" (email_groups+sms_groups -> notification_groups),
+pełny opis w docs/raspberry-pi-deployment.md sekcja 7m:
+  python3 -c "
+from app import app, db
+with app.app_context():
+    db.create_all()
+"
+  python3 -c "
+import sqlite3
+conn = sqlite3.connect('/home/rpi/Monitoring/back/instance/monitoring.db')
+conn.execute('ALTER TABLE notification_rules ADD COLUMN group_id INTEGER;')
+conn.commit()
+conn.close()
+"
+  cd /home/rpi/Monitoring/back && python3 migrations/merge_notification_groups.py
+
 Opcjonalnie zainstaluj normalny CLI:
   sudo apt install -y sqlite3
   sqlite3 /home/rpi/Monitoring/back/instance/monitoring.db ".tables"
