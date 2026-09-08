@@ -13,6 +13,7 @@ import VideocamIcon from "@mui/icons-material/Videocam";
 import DownloadIcon from "@mui/icons-material/Download";
 import DeleteIcon from "@mui/icons-material/Delete";
 import DeleteSweepIcon from "@mui/icons-material/DeleteSweep";
+import { useLang } from "./translation";
 
 // Try to extract date/time from common filename patterns:
 // Video_Date_2026_07_22_Time_21_07_32.mp4 (this app's camera.py)
@@ -39,19 +40,19 @@ function parseVideoDate(name) {
     return null;
 }
 
-function formatDate(d) {
+function formatDate(d, locale) {
     if (!d) return null;
-    return d.toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric" });
+    return d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
 }
-function formatTime(d) {
+function formatTime(d, locale) {
     if (!d) return null;
-    return d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function groupByDate(videos) {
+function groupByDate(videos, locale, noDateLabel) {
     const groups = {};
     for (const v of videos) {
-        const key = v.parsedDate ? formatDate(v.parsedDate) : "Brak daty";
+        const key = v.parsedDate ? formatDate(v.parsedDate, locale) : noDateLabel;
         if (!groups[key]) groups[key] = [];
         groups[key].push(v);
     }
@@ -59,6 +60,8 @@ function groupByDate(videos) {
 }
 
 const SavedVideos = () => {
+    const { t, lang } = useLang();
+    const locale = lang === "en" ? "en-GB" : "pl-PL";
     const accessToken = localStorage.getItem("JWT");
     const [videos, setVideos]           = useState([]);
     const [loading, setLoading]         = useState(true);
@@ -102,7 +105,7 @@ const SavedVideos = () => {
     };
 
     const handleDeleteVideo = async (name) => {
-        if (!window.confirm(`Usunąć nagranie "${name}"?`)) return;
+        if (!window.confirm(t("confirm_delete_recording").replace("{n}", name))) return;
         try {
             await axios.delete(`${API_BASE}/videos/${encodeURIComponent(name)}`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
@@ -115,7 +118,7 @@ const SavedVideos = () => {
     };
 
     const handleDeleteAllVideos = async () => {
-        if (!window.confirm("Usunąć wszystkie zapisane nagrania?")) return;
+        if (!window.confirm(t("confirm_delete_all_recordings"))) return;
         try {
             await axios.delete(`${API_BASE}/videos`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
@@ -136,7 +139,7 @@ const SavedVideos = () => {
     const filtered = videos.filter(v =>
         v.name.toLowerCase().includes(search.toLowerCase())
     );
-    const groups = groupByDate(filtered);
+    const groups = groupByDate(filtered, locale, t("no_date"));
     const dateKeys = Object.keys(groups);
 
     return (
@@ -144,7 +147,7 @@ const SavedVideos = () => {
             <Box sx={{ p: 3, maxWidth: 860, mx: "auto" }}>
                 <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 2 }}>
                     <Typography variant="h5" fontWeight="bold">
-                        Zapisane wideo
+                        {t("nav_saved_videos")}
                     </Typography>
                     {videos.length > 0 && (
                         <Button
@@ -152,7 +155,7 @@ const SavedVideos = () => {
                             startIcon={<DeleteSweepIcon />}
                             onClick={handleDeleteAllVideos}
                         >
-                            Usuń wszystkie
+                            {t("delete_all")}
                         </Button>
                     )}
                 </Box>
@@ -174,7 +177,7 @@ const SavedVideos = () => {
                         <Box sx={{ display: "flex", justifyContent: "center", bgcolor: "#000", p: 1 }}>
                             <video key={selectedVideo.url} width="100%" style={{ maxWidth: 720 }} controls autoPlay>
                                 <source src={selectedVideo.url} type="video/mp4" />
-                                Twoja przeglądarka nie wspiera odtwarzacza wideo.
+                                {t("browser_no_video_support")}
                             </video>
                         </Box>
                     </Box>
@@ -182,7 +185,7 @@ const SavedVideos = () => {
 
                 {/* Search */}
                 <TextField
-                    size="small" fullWidth placeholder="Szukaj po nazwie..."
+                    size="small" fullWidth placeholder={t("search_by_name_placeholder")}
                     value={search} onChange={e => setSearch(e.target.value)}
                     sx={{ mb: 2 }}
                     InputProps={{
@@ -197,7 +200,7 @@ const SavedVideos = () => {
                 {loading && <LinearProgress sx={{ mb: 2 }} />}
 
                 {!loading && filtered.length === 0 && (
-                    <Typography color="text.secondary">Brak nagrań.</Typography>
+                    <Typography color="text.secondary">{t("no_recordings")}</Typography>
                 )}
 
                 {/* Grouped list */}
@@ -207,7 +210,7 @@ const SavedVideos = () => {
                             <Chip label={dateKey} size="small"
                                 sx={{ bgcolor: "#21262d", color: "#8b949e", fontSize: "0.72rem" }} />
                             <Typography variant="caption" color="text.secondary">
-                                {groups[dateKey].length} {groups[dateKey].length === 1 ? "nagranie" : "nagrań"}
+                                {groups[dateKey].length} {groups[dateKey].length === 1 ? t("recording_singular") : t("recording_plural")}
                             </Typography>
                         </Box>
 
@@ -236,12 +239,12 @@ const SavedVideos = () => {
                                                 </Typography>
                                                 {v.parsedDate && (
                                                     <Typography sx={{ fontSize: "0.7rem", color: "#8b949e" }}>
-                                                        {formatTime(v.parsedDate)}
+                                                        {formatTime(v.parsedDate, locale)}
                                                     </Typography>
                                                 )}
                                             </Box>
 
-                                            <IconButton size="small" title="Odtwórz"
+                                            <IconButton size="small" title={t("play_title")}
                                                 onClick={() => setSelectedVideo(isSelected ? null : v)}
                                                 sx={{
                                                     color: isSelected ? "#58a6ff" : "#8b949e",
@@ -252,7 +255,7 @@ const SavedVideos = () => {
                                                 <PlayArrowIcon sx={{ fontSize: "1rem" }} />
                                             </IconButton>
 
-                                            <IconButton size="small" title="Pobierz"
+                                            <IconButton size="small" title={t("download_title")}
                                                 onClick={() => handleDownloadVideo(v)}
                                                 sx={{
                                                     color: "#8b949e", bgcolor: "#161b22",
@@ -262,7 +265,7 @@ const SavedVideos = () => {
                                                 <DownloadIcon sx={{ fontSize: "1rem" }} />
                                             </IconButton>
 
-                                            <IconButton size="small" title="Usuń"
+                                            <IconButton size="small" title={t("delete")}
                                                 onClick={() => handleDeleteVideo(v.name)}
                                                 sx={{
                                                     color: "#8b949e", bgcolor: "#161b22",

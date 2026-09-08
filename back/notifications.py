@@ -65,13 +65,17 @@ def send_email(to_addresses, subject, body, attachment_bytes=None, attachment_fi
             raise
 
 
-def send_sms(to_numbers, message):
+def send_sms(to_numbers, message, raise_on_error=False):
+    """raise_on_error — patrz docstring send_email() powyżej, ta sama zasada:
+    False przy realnych alarmach (odporność), True przy teście z Ustawień."""
     if not to_numbers:
+        if raise_on_error:
+            raise RuntimeError('Brak numeru odbiorcy')
         return
     backend = os.getenv('SMS_BACKEND', 'mock')
     if backend == 'sim800':
         from sim800 import send_sms_sim800
-        send_sms_sim800(to_numbers, message)
+        send_sms_sim800(to_numbers, message, raise_on_error=raise_on_error)
         return
     for number in to_numbers:
         print(f'[notifications] (mock SMS) do {number}: {message}')

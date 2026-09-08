@@ -8,6 +8,7 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ThermostatIcon from "@mui/icons-material/Thermostat";
 import WaterDropIcon from "@mui/icons-material/WaterDrop";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { useLang } from "./translation";
 
 const TYPE_CONFIG = {
     temperature: { label: "Temperatura", unit: "°C", icon: ThermostatIcon, color: "#ef5350" },
@@ -55,6 +56,7 @@ function GaugeBar({ value, minCrit, maxCrit, minNonCrit, maxNonCrit, unit }) {
 export default function SensorDetail() {
     const { rackId, type } = useParams();
     const navigate = useNavigate();
+    const { t } = useLang();
     const cfg = TYPE_CONFIG[type] || TYPE_CONFIG.temperature;
     const Icon = cfg.icon;
 
@@ -139,7 +141,7 @@ export default function SensorDetail() {
         const maxCritVal = Number(maxCritInput);
         const delayVal = Number(delayInput);
         if ([minVal, maxVal, minCritVal, maxCritVal, delayVal].some(Number.isNaN) || minVal >= maxVal || minCritVal >= maxCritVal) {
-            setSaveStatus({ type: "error", message: "Wartość minimalna musi być mniejsza niż maksymalna." });
+            setSaveStatus({ type: "error", message: t("err_min_lt_max") });
             return;
         }
         const other = type === "temperature" ? "humidity" : "temperature";
@@ -157,10 +159,10 @@ export default function SensorDetail() {
                 { headers: { Authorization: `Bearer ${accessToken}` } },
             );
             setCurrent(data);
-            setSaveStatus({ type: "success", message: "Progi zapisane." });
+            setSaveStatus({ type: "success", message: t("thresholds_saved") });
             setTimeout(() => setSaveStatus(null), 2500);
         } catch (error) {
-            setSaveStatus({ type: "error", message: error.response?.data?.message || "Błąd zapisu progów." });
+            setSaveStatus({ type: "error", message: error.response?.data?.message || t("save_thresholds_error") });
         }
     };
 
@@ -175,23 +177,23 @@ export default function SensorDetail() {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             setCurrent(data);
-            setRecordsStatus({ type: "success", message: "Rekordy wyczyszczone." });
+            setRecordsStatus({ type: "success", message: t("records_cleared") });
         } catch (error) {
-            setRecordsStatus({ type: "error", message: error.response?.data?.message || "Błąd czyszczenia rekordów." });
+            setRecordsStatus({ type: "error", message: error.response?.data?.message || t("clear_records_error") });
         }
         setTimeout(() => setRecordsStatus(null), 2500);
     };
 
     const handleClearGraph = async () => {
-        if (!window.confirm("Usunąć historię wykresu dla tego czujnika?")) return;
+        if (!window.confirm(t("clear_graph_confirm"))) return;
         try {
             await axios.delete(`${API_BASE}/device-sensors/${rackId}/history`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             setHistory([]);
-            setGraphStatus({ type: "success", message: "Wykres wyczyszczony." });
+            setGraphStatus({ type: "success", message: t("graph_cleared_msg") });
         } catch (error) {
-            setGraphStatus({ type: "error", message: error.response?.data?.message || "Błąd czyszczenia wykresu." });
+            setGraphStatus({ type: "error", message: error.response?.data?.message || t("clear_graph_error") });
         }
         setTimeout(() => setGraphStatus(null), 2500);
     };
@@ -210,7 +212,7 @@ export default function SensorDetail() {
             const { data } = await axios.get(`${API_BASE}/device-sensors/${rackId}`);
             setCurrent(data);
         } catch (error) {
-            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd zapisu." });
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || t("save_error") });
             setTimeout(() => setAlarmStatus(null), 2500);
         }
     };
@@ -220,9 +222,9 @@ export default function SensorDetail() {
             await axios.post(`${API_BASE}/device-sensors/${rackId}/${type}/${severity}/simulate`, {}, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
-            setAlarmStatus({ type: "success", message: "Alarm testowy wywołany — sprawdź powiadomienia." });
+            setAlarmStatus({ type: "success", message: t("alarm_test_triggered") });
         } catch (error) {
-            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd wywołania testu." });
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || t("test_trigger_error") });
         }
         setTimeout(() => setAlarmStatus(null), 3000);
     };
@@ -233,9 +235,9 @@ export default function SensorDetail() {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             setCurrent(prev => prev && { ...prev, [`alarm_acknowledged_${type}_${severity}`]: true });
-            setAlarmStatus({ type: "success", message: "Alarm potwierdzony." });
+            setAlarmStatus({ type: "success", message: t("alarm_acknowledged_msg") });
         } catch (error) {
-            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd potwierdzania alarmu." });
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || t("ack_error") });
         }
         setTimeout(() => setAlarmStatus(null), 2500);
     };
@@ -249,10 +251,10 @@ export default function SensorDetail() {
                     </IconButton>
                     <Box>
                         <Typography variant="h5" fontWeight="bold" sx={{ color: "#1a1a2e" }}>
-                            Szafa {rackId}
+                            {t("rack")} {rackId}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                            {cfg.label} · wartość co 5s · wykres odświeżany co 20s
+                            {t("metric_" + type)} · {t("value_5s")} · {t("chart_refresh_20s")}
                         </Typography>
                     </Box>
                 </Box>
@@ -260,12 +262,12 @@ export default function SensorDetail() {
                 <FormControlLabel
                     sx={{ mb: 2 }}
                     control={<Switch checked={current?.enabled !== false} onChange={handleToggleEnabled} />}
-                    label="Czujnik podłączony"
+                    label={t("sensor_connected")}
                 />
 
                 {current?.enabled === false ? (
                     <Alert severity="warning" sx={{ mb: 2 }}>
-                        Czujnik nie jest podłączony. Włącz powyżej, gdy podłączysz realny czujnik.
+                        {t("sensor_not_connected_msg")}
                     </Alert>
                 ) : (
                 <>
@@ -297,7 +299,7 @@ export default function SensorDetail() {
                 <Box sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
                     <Box sx={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 2 }}>
                         <Box>
-                            <Typography variant="caption" color="text.secondary">Najniższy odczyt</Typography>
+                            <Typography variant="caption" color="text.secondary">{t("lowest_reading")}</Typography>
                             <Typography fontWeight="bold">
                                 {current?.[`lowest_${type}`] != null ? `${current[`lowest_${type}`]}${cfg.unit}` : "—"}
                             </Typography>
@@ -306,7 +308,7 @@ export default function SensorDetail() {
                             </Typography>
                         </Box>
                         <Box>
-                            <Typography variant="caption" color="text.secondary">Najwyższy odczyt</Typography>
+                            <Typography variant="caption" color="text.secondary">{t("highest_reading")}</Typography>
                             <Typography fontWeight="bold">
                                 {current?.[`highest_${type}`] != null ? `${current[`highest_${type}`]}${cfg.unit}` : "—"}
                             </Typography>
@@ -315,7 +317,7 @@ export default function SensorDetail() {
                             </Typography>
                         </Box>
                         <Button size="small" variant="outlined" onClick={handleClearRecords} sx={{ alignSelf: "center" }}>
-                            Wyczyść rekordy
+                            {t("clear_records")}
                         </Button>
                     </Box>
                     {recordsStatus && (
@@ -332,7 +334,7 @@ export default function SensorDetail() {
                     return (
                         <Box key={sev.key} sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
                             <Typography variant="subtitle2" sx={{ color: "#333", fontWeight: "bold", mb: 1 }}>
-                                {sev.label}
+                                {t(sev.key === "critical" ? "sev_critical" : "sev_non_critical")}
                             </Typography>
 
                             <Box sx={{
@@ -344,32 +346,32 @@ export default function SensorDetail() {
                                     color: !active ? "#2e7d32" : acknowledged ? "#8a6d00" : "#c62828",
                                 }}>
                                     {!active
-                                        ? "Brak alarmu"
+                                        ? t("no_alarm")
                                         : acknowledged
-                                            ? "Potwierdzony — czeka na powrót do normy"
-                                            : "ALARM — przekroczono próg, wymaga potwierdzenia"}
+                                            ? t("ack_waiting_normal")
+                                            : t("alarm_exceeded_needs_ack")}
                                 </Typography>
                             </Box>
 
                             <Box sx={{ display: "flex", gap: 1.5, mb: 1.5, flexWrap: "wrap" }}>
                                 <Button size="small" variant="outlined" onClick={() => handleSimulate(sev.key)}>
-                                    Symuluj alarm (test)
+                                    {t("simulate_alarm_test")}
                                 </Button>
                                 <Button size="small" variant="contained" color="error"
                                     onClick={() => handleAcknowledgeAlarm(sev.key)} disabled={!active || acknowledged}>
-                                    Potwierdź alarm
+                                    {t("acknowledge_alarm")}
                                 </Button>
                             </Box>
 
                             <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
                                 <TextField
-                                    label={`Min (${cfg.unit})`} type="number" size="small"
+                                    label={`${t("min")} (${cfg.unit})`} type="number" size="small"
                                     value={sev.key === "critical" ? minCritInput : minInput}
                                     onChange={e => (sev.key === "critical" ? setMinCritInput : setMinInput)(e.target.value)}
                                     sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
                                 />
                                 <TextField
-                                    label={`Max (${cfg.unit})`} type="number" size="small"
+                                    label={`${t("max")} (${cfg.unit})`} type="number" size="small"
                                     value={sev.key === "critical" ? maxCritInput : maxInput}
                                     onChange={e => (sev.key === "critical" ? setMaxCritInput : setMaxInput)(e.target.value)}
                                     sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
@@ -381,17 +383,17 @@ export default function SensorDetail() {
 
                 <Box sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
                     <Typography variant="subtitle2" sx={{ color: "#333", fontWeight: "bold", mb: 1 }}>
-                        Opóźnienie alarmu
+                        {t("alarm_delay_title")}
                     </Typography>
                     <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
                         <TextField
-                            label="Opóźnienie (s)" type="number" size="small" value={delayInput}
+                            label={t("delay_s_label")} type="number" size="small" value={delayInput}
                             onChange={e => setDelayInput(e.target.value)}
                             sx={{ width: 140, bgcolor: "white", borderRadius: 1 }}
-                            helperText="Ile sekund odczyt musi być poza progiem zanim alarm się włączy"
+                            helperText={t("delay_helper")}
                         />
                         <Button variant="contained" size="small" onClick={handleSaveThresholds}>
-                            Zapisz progi
+                            {t("save_thresholds")}
                         </Button>
                     </Box>
                     {saveStatus && (
@@ -414,11 +416,11 @@ export default function SensorDetail() {
                             variant={range === opt.key ? "contained" : "outlined"}
                             onClick={() => setRange(opt.key)}
                         >
-                            {opt.label}
+                            {t("range_" + opt.key)}
                         </Button>
                     ))}
                     <Button size="small" color="error" variant="outlined" sx={{ ml: "auto" }} onClick={handleClearGraph}>
-                        Wyczyść wykres
+                        {t("clear_graph")}
                     </Button>
                 </Box>
                 {graphStatus && (
@@ -437,9 +439,9 @@ export default function SensorDetail() {
                                 contentStyle={{ background: "#161b22", border: "1px solid #30363d" }}
                                 labelStyle={{ color: "#c9d1d9" }}
                                 itemStyle={{ color: cfg.color }}
-                                formatter={val => [`${val}${cfg.unit}`, "Wartość"]}
+                                formatter={val => [`${val}${cfg.unit}`, t("value_word")]}
                             />
-                            <Line type="monotone" dataKey="value" name="Wartość" stroke={cfg.color} dot={false} strokeWidth={2} />
+                            <Line type="monotone" dataKey="value" name={t("value_word")} stroke={cfg.color} dot={false} strokeWidth={2} />
                         </LineChart>
                     </ResponsiveContainer>
                 </Box>

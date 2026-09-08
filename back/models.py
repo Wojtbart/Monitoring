@@ -48,6 +48,7 @@ class Setting(db.Model):
     evening_test_time = db.Column(db.Time, nullable=False)
     morning_test_time = db.Column(db.Time, nullable=False)
     auto_save_layout = db.Column(db.Boolean, nullable=False, default=False)
+    recording_on_motion_enabled = db.Column(db.Boolean, nullable=False, default=True)
 
     @staticmethod
     def get_all_settings():
@@ -57,17 +58,20 @@ class Setting(db.Model):
                 'id': setting.id,
                 'recording_seconds': setting.recording_seconds,
                 'auto_save_layout': setting.auto_save_layout,
+                'recording_on_motion_enabled': setting.recording_on_motion_enabled,
             }
             for setting in settings_list
         ]
 
     @staticmethod
-    def update_settings(id, recording_seconds, auto_save_layout=None):
+    def update_settings(id, recording_seconds, auto_save_layout=None, recording_on_motion_enabled=None):
         settings = db.session.get(Setting, id)
         if settings:
             settings.recording_seconds = recording_seconds
             if auto_save_layout is not None:
                 settings.auto_save_layout = auto_save_layout
+            if recording_on_motion_enabled is not None:
+                settings.recording_on_motion_enabled = recording_on_motion_enabled
             db.session.commit()
             return True
         return False
@@ -676,13 +680,13 @@ class DeviceSensorSettings(db.Model):
     admin może go wyłączyć zamiast dostawać fałszywe alarmy z pustych szaf."""
     __tablename__ = 'device_sensor_settings'
     id = db.Column(db.Integer, primary_key=True)
-    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    enabled = db.Column(db.Boolean, nullable=False, default=False)
 
     @staticmethod
     def get_or_create():
         settings = DeviceSensorSettings.query.first()
         if not settings:
-            settings = DeviceSensorSettings(enabled=True)
+            settings = DeviceSensorSettings(enabled=False)
             db.session.add(settings)
             db.session.commit()
         return settings

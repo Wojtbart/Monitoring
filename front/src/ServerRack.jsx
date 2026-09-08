@@ -18,8 +18,9 @@ import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ThermostatIcon from "@mui/icons-material/Thermostat";
 import WaterDropIcon from "@mui/icons-material/WaterDrop";
 import RackVisual3D, { DEVICE_TYPES } from "./RackVisual3D";
+import { useLang } from "./translation";
 
-const RACK_PRESETS = [16, 32, 42];
+const RACK_PRESETS = [10, 12, 16, 32, 42];
 
 const makeSlots = (count, existing = []) => {
     const devices = existing.map(d => ({ height: 1, ...d }));
@@ -48,7 +49,7 @@ const wouldOverlap = (currentSlots, editUnit, height) => {
     );
 };
 
-const COLS = "44px 70px 1fr 72px 108px";
+const COLS = "44px 70px 1fr 100px 108px";
 
 const openManagement = address => {
     if (!address) return;
@@ -59,6 +60,7 @@ const openManagement = address => {
 const extractHost = address => (address || "").split(":")[0].trim();
 
 function RackHeader() {
+    const { t } = useLang();
     const cell = label => (
         <Typography variant="caption" sx={{ color: "#8b949e", fontWeight: "bold", fontSize: "0.68rem", letterSpacing: "0.05em" }}>
             {label}
@@ -66,14 +68,16 @@ function RackHeader() {
     );
     return (
         <Box sx={{ display: "grid", gridTemplateColumns: COLS, gap: 1, px: 2, py: 1, bgcolor: "#161b22", borderBottom: "1px solid #30363d" }}>
-            {cell("UNIT")} {cell("TYP")} {cell("URZĄDZENIE")}
+            {cell("UNIT")} {cell(t("col_type"))} {cell(t("col_device"))}
             {cell("PING")} <Box />
         </Box>
     );
 }
 
 function RackSlot({ slot, onEdit, onDelete, pingState, onPing }) {
-    const dtype   = DEVICE_TYPES[slot.type] || DEVICE_TYPES.empty;
+    const { t } = useLang();
+    const typeKey = DEVICE_TYPES[slot.type] ? slot.type : "empty";
+    const dtype   = DEVICE_TYPES[typeKey];
     const isEmpty = slot.type === "empty";
 
     return (
@@ -91,14 +95,14 @@ function RackSlot({ slot, onEdit, onDelete, pingState, onPing }) {
                     : `${String(slot.unit).padStart(2, "0")}U`}
             </Typography>
             <Typography sx={{ color: dtype.color, fontSize: "0.68rem", fontWeight: "bold" }}>
-                {dtype.label}
+                {t("device_" + typeKey)}
             </Typography>
             <Typography sx={{
                 color: isEmpty ? "#484f58" : "#e6edf3",
                 fontSize: "0.78rem", fontFamily: "monospace",
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
-                {slot.name || (isEmpty ? "— puste —" : "bez nazwy")}
+                {slot.name || (isEmpty ? t("empty_slot") : t("no_name"))}
             </Typography>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 <IconButton
@@ -110,7 +114,7 @@ function RackSlot({ slot, onEdit, onDelete, pingState, onPing }) {
                         color: !isEmpty && slot.management ? "#c9d1d9" : "#3a4048",
                         "&:hover": { color: "#2196f3" },
                     }}
-                    title={slot.management ? `Ping ${extractHost(slot.management)}` : "Brak adresu management"}
+                    title={slot.management ? `Ping ${extractHost(slot.management)}` : t("no_mgmt_address")}
                 >
                     <NetworkPingIcon sx={{ fontSize: "0.85rem" }} />
                 </IconButton>
@@ -121,7 +125,9 @@ function RackSlot({ slot, onEdit, onDelete, pingState, onPing }) {
                     <Typography sx={{ color: "#4caf50", fontSize: "0.62rem", fontFamily: "monospace", fontWeight: "bold" }}>OK</Typography>
                 )}
                 {pingState?.state === "fail" && (
-                    <Typography sx={{ color: "#f44336", fontSize: "0.62rem", fontFamily: "monospace", fontWeight: "bold" }}>BRAK</Typography>
+                    <Typography sx={{ color: "#f44336", fontSize: "0.6rem", fontFamily: "monospace", fontWeight: "bold", lineHeight: 1.1 }}>
+                        {t("ping_no_response")}
+                    </Typography>
                 )}
             </Box>
 
@@ -149,7 +155,7 @@ function RackSlot({ slot, onEdit, onDelete, pingState, onPing }) {
                             "&:hover": { bgcolor: "#2196f3", color: "#fff" },
                             "&.Mui-disabled": { bgcolor: "#1c2128", color: "#3a4048" },
                         }}
-                        title={slot.management || "Brak adresu management"}
+                        title={slot.management || t("no_mgmt_address")}
                     >
                         <OpenInNewIcon sx={{ fontSize: "0.85rem" }} />
                     </IconButton>
@@ -175,9 +181,10 @@ function RackSlot({ slot, onEdit, onDelete, pingState, onPing }) {
 export default function ServerRack() {
     const { rackId } = useParams();
     const navigate   = useNavigate();
+    const { t } = useLang();
     const STORAGE_KEY = `rack_layout_${rackId}`;
     const rackNum     = (parseInt(rackId?.replace("A", "") ?? "0") + 1);
-    const defaultRackLabel = `Szafa ${rackNum}`;
+    const defaultRackLabel = `${t("rack")} ${rackNum}`;
 
     const accessToken = localStorage.getItem("JWT");
     const [rackSize, setRackSize] = useState(42);
@@ -281,7 +288,7 @@ export default function ServerRack() {
             const { data } = await axios.post(`${API_BASE}/layouts`, payload, { headers });
             localStorage.setItem(STORAGE_KEY, data.id);
             setSavedAt(new Date());
-        } catch (_) { alert("Błąd zapisu konfiguracji szafy"); }
+        } catch (_) { alert(t("save_rack_config_error")); }
         setSaving(false);
     };
 
@@ -316,15 +323,15 @@ export default function ServerRack() {
     const confirmEdit = () => {
         const height = editType === "empty" ? 1 : editHeight;
         if (editType !== "empty" && height < 0.5) {
-            setEditError("Wysokość minimum 0.5U");
+            setEditError(t("err_height_min"));
             return;
         }
         if (editSlot + height - 1 > rackSize) {
-            setEditError("Urządzenie wykracza poza szafę");
+            setEditError(t("err_out_of_rack"));
             return;
         }
         if (editType !== "empty" && wouldOverlap(slots, editSlot, height)) {
-            setEditError("Zakres nachodzi na sąsiednie urządzenie");
+            setEditError(t("err_overlap"));
             return;
         }
         setSlots(prev => makeSlots(rackSize, [
@@ -372,7 +379,7 @@ export default function ServerRack() {
                         width={190}
                     />
                     <Typography variant="caption" sx={{ display: "block", mt: 0.75, textAlign: "center", color: "text.secondary" }}>
-                        Widok wizualny serwera
+                        {t("visual_view_caption")}
                     </Typography>
                 </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -397,48 +404,48 @@ export default function ServerRack() {
                             ) : (
                                 <Typography variant="h5" fontWeight="bold"
                                     sx={{ color: "#1a1a2e", cursor: "pointer", "&:hover": { textDecoration: "underline" } }}
-                                    onClick={startEditingName} title="Kliknij, żeby zmienić nazwę">
+                                    onClick={startEditingName} title={t("rename_hint")}>
                                     {displayName}
                                 </Typography>
                             )}
                             <Typography variant="caption" color="text.secondary">
-                                {activeDevices}/{rackSize}U zajęte · odświeżanie co 5s
+                                {activeDevices}/{rackSize}U {t("occupied_suffix")} · {t("refresh_5s")}
                             </Typography>
                         </Box>
                     </Box>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
                         <FormControl size="small" sx={{ minWidth: 110 }}>
-                            <InputLabel>Rozmiar rack</InputLabel>
-                            <Select value={rackSize} label="Rozmiar rack"
+                            <InputLabel>{t("rack_size_label")}</InputLabel>
+                            <Select value={rackSize} label={t("rack_size_label")}
                                 onChange={e => handleRackSizeChange(Number(e.target.value))}>
                                 {RACK_PRESETS.map(u => <MenuItem key={u} value={u}>{u}U</MenuItem>)}
                             </Select>
                         </FormControl>
-                        {autoSave && <Chip size="small" variant="outlined" color="success" label="Auto-zapis" />}
+                        {autoSave && <Chip size="small" variant="outlined" color="success" label={t("auto_save")} />}
                         {savedAt && (
                             <Typography variant="caption" color="text.secondary">
-                                Zapisano {savedAt.toLocaleTimeString()}
+                                {t("saved")} {savedAt.toLocaleTimeString()}
                             </Typography>
                         )}
                         <Button variant="contained" size="small" startIcon={<SaveIcon />}
                             onClick={saveLayout} disabled={saving}>
-                            Zapisz układ
+                            {t("save_layout")}
                         </Button>
                     </Box>
                 </Box>
 
                 {criticalAlert && (
                     <Alert severity="error" sx={{ mb: 1.5 }}>
-                        ALARM KRYTYCZNY:{" "}
-                        {sensor.fire && "🔥 Ogień  "}
-                        {sensor.gas && "💨 Gaz/Dym  "}
-                        {sensor.water && "💧 Woda  "}
+                        {t("critical_alarm")}:{" "}
+                        {sensor.fire && `${t("alert_fire")}  `}
+                        {sensor.gas && `${t("alert_gas")}  `}
+                        {sensor.water && `${t("alert_water")}  `}
                     </Alert>
                 )}
                 {warnAlert && (
                     <Alert severity={deviceAlarmCritical ? "error" : "warning"} sx={{ mb: 1.5 }}>
-                        {deviceAlarmCritical ? "ALARM KRYTYCZNY — " : ""}
-                        Temperatura/wilgotność tej szafy poza zakresem: {deviceSensor.temperature}°C / {deviceSensor.humidity}%
+                        {deviceAlarmCritical ? `${t("critical_alarm")} — ` : ""}
+                        {t("rack_out_of_range")}: {deviceSensor.temperature}°C / {deviceSensor.humidity}%
                     </Alert>
                 )}
 
@@ -448,10 +455,10 @@ export default function ServerRack() {
                         sx={{ bgcolor: "#c62828", color: "white", fontWeight: "bold" }} />
                     <Chip icon={<WaterDropIcon />} label={`${deviceSensor.humidity}%`} size="small"
                         sx={{ bgcolor: "#1565c0", color: "white", fontWeight: "bold" }} />
-                    {sensor.motion && <Chip label="Ruch" size="small" color="warning" />}
-                    {sensor.door   && <Chip label="Drzwi otwarte" size="small" color="warning" />}
+                    {sensor.motion && <Chip label={t("sensor_motion")} size="small" color="warning" />}
+                    {sensor.door   && <Chip label={t("door_open_lower")} size="small" color="warning" />}
                     {!sensor.motion && !sensor.door && !criticalAlert && !warnAlert && (
-                        <Chip label="Wszystkie systemy OK" size="small" sx={{ bgcolor: "#2e7d32", color: "white" }} />
+                        <Chip label={t("all_systems_ok")} size="small" sx={{ bgcolor: "#2e7d32", color: "white" }} />
                     )}
                 </Box>
 
@@ -474,7 +481,7 @@ export default function ServerRack() {
                 </Box>
 
                 <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1, textAlign: "right" }}>
-                    Kliknij ikonę edycji aby zmienić typ/nazwę urządzenia
+                    {t("edit_hint")}
                 </Typography>
                 </Box>
             </Box>
@@ -484,21 +491,21 @@ export default function ServerRack() {
                 <DialogTitle>Slot {editSlot}U</DialogTitle>
                 <DialogContent sx={{ display: "flex", flexDirection: "column", gap: 2, pt: "16px !important" }}>
                     <Select value={editType} onChange={e => setEditType(e.target.value)} size="small" fullWidth>
-                        {Object.entries(DEVICE_TYPES).map(([key, val]) => (
-                            <MenuItem key={key} value={key}>{val.label}</MenuItem>
+                        {Object.keys(DEVICE_TYPES).map(key => (
+                            <MenuItem key={key} value={key}>{t("device_" + key)}</MenuItem>
                         ))}
                     </Select>
                     <TextField
-                        label="Nazwa urządzenia"
+                        label={t("device_name_label")}
                         value={editName}
                         onChange={e => setEditName(e.target.value)}
                         size="small" fullWidth autoFocus
                         onKeyDown={e => e.key === "Enter" && confirmEdit()}
-                        placeholder={editType === "empty" ? "Opcjonalna etykieta" : "np. Dell PowerEdge R740"}
+                        placeholder={editType === "empty" ? t("placeholder_optional_label") : t("placeholder_device_example")}
                     />
                     {editType !== "empty" && (
                         <TextField
-                            label="Wysokość (U)"
+                            label={t("height_label")}
                             type="number"
                             value={editHeight}
                             onChange={e => setEditHeight(Math.max(0.5, parseFloat(e.target.value) || 0.5))}
@@ -508,19 +515,19 @@ export default function ServerRack() {
                     )}
                     {editType !== "empty" && (
                         <TextField
-                            label="Adres management"
+                            label={t("mgmt_address_label")}
                             value={editManagement}
                             onChange={e => setEditManagement(e.target.value)}
                             size="small" fullWidth
                             onKeyDown={e => e.key === "Enter" && confirmEdit()}
-                            placeholder="np. 172.16.0.8:3004"
+                            placeholder={t("placeholder_mgmt_example")}
                         />
                     )}
                     {editError && <Alert severity="error">{editError}</Alert>}
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => { setEditSlot(null); setEditError(""); }}>Anuluj</Button>
-                    <Button onClick={confirmEdit} variant="contained">Zapisz</Button>
+                    <Button onClick={() => { setEditSlot(null); setEditError(""); }}>{t("cancel")}</Button>
+                    <Button onClick={confirmEdit} variant="contained">{t("save")}</Button>
                 </DialogActions>
             </Dialog>
         </Layout>

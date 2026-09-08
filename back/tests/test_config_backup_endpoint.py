@@ -77,6 +77,7 @@ def test_restore_roundtrip_notification_groups_and_rules(client, app):
 def test_restore_device_thresholds_only_for_existing_devices(client, app):
     token = _login(client, app)
     headers = {'Authorization': f'Bearer {token}'}
+    client.put('/device-sensor-settings', json={'enabled': True}, headers=headers)
     client.get('/device-sensors/A0')
     backup = client.get('/config-backup', headers=headers).get_json()
     backup['device_sensor_thresholds'][0]['min_temperature'] = 1.0

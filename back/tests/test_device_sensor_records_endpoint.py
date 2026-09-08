@@ -9,7 +9,13 @@ def _login(client, app):
     return client.post('/login', json={'username': 'boss', 'password': 'pw123'}).get_json()['accessToken']
 
 
+def _enable(client, token):
+    client.put('/device-sensor-settings', json={'enabled': True},
+               headers={'Authorization': f'Bearer {token}'})
+
+
 def test_get_device_sensors_includes_extremes(client, app):
+    _enable(client, _login(client, app))
     resp = client.get('/device-sensors/A0')
     data = resp.get_json()
     assert data['lowest_temperature'] == data['temperature']
@@ -32,6 +38,7 @@ def test_clear_records_404_for_missing_device(client, app):
 
 def test_clear_records_resets_extremes(client, app):
     token = _login(client, app)
+    _enable(client, token)
     client.get('/device-sensors/A0')
     with app.app_context():
         device = DeviceSensor.query.filter_by(rack_id='A0').first()
@@ -53,6 +60,7 @@ def test_clear_history_requires_auth(client):
 
 def test_clear_history_removes_rows(client, app):
     token = _login(client, app)
+    _enable(client, token)
     for _ in range(3):
         client.get('/device-sensors/A0')
     with app.app_context():
@@ -65,6 +73,7 @@ def test_clear_history_removes_rows(client, app):
 
 
 def test_history_range_filters_by_time(client, app):
+    _enable(client, _login(client, app))
     client.get('/device-sensors/A0')
     with app.app_context():
         old_row = DeviceSensorHistory(

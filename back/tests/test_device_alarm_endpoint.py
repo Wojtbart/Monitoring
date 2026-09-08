@@ -7,7 +7,12 @@ import app as app_module
 def _login(client, app):
     with app.app_context():
         User.add_user('boss', generate_password_hash('pw123', method='pbkdf2:sha256'), True)
-    return client.post('/login', json={'username': 'boss', 'password': 'pw123'}).get_json()['accessToken']
+    token = client.post('/login', json={'username': 'boss', 'password': 'pw123'}).get_json()['accessToken']
+    # Mock DeviceSensor domyślnie WYŁĄCZONY (patrz models.py) — testy tego
+    # pliku zawsze potrzebują realnego wiersza czujnika, więc włączamy od razu.
+    client.put('/device-sensor-settings', json={'enabled': True},
+               headers={'Authorization': f'Bearer {token}'})
+    return token
 
 
 def _set_thresholds(client, token, rack, **overrides):

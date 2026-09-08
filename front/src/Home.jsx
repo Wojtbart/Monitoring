@@ -7,8 +7,10 @@ import {
 } from "@mui/material";
 import Layout from "./Layout";
 import "./Home.css";
+import { useLang } from "./translation";
 
 const Home = () => {
+    const { t } = useLang();
     const accessToken = localStorage.getItem("JWT");
     const [pingAddress, setPingAddress] = useState("");
     const [pingResponses, setPingResponses] = useState([]);
@@ -23,7 +25,7 @@ const Home = () => {
             });
             setPingResponses(res.data.messages || []);
         } catch (error) {
-            setPingResponses([error.response?.data?.message || "Błąd połączenia"]);
+            setPingResponses([error.response?.data?.message || t("ping_connection_error")]);
         }
         setPinging(false);
     };
@@ -32,30 +34,30 @@ const Home = () => {
         <Layout>
             <Box sx={{ maxWidth: 900, mx: "auto", p: 2 }}>
                 <Card variant="outlined" sx={{ p: 3, borderRadius: 3 }}>
-                    <Typography variant="h6" gutterBottom>Test urządzenia (ping)</Typography>
+                    <Typography variant="h6" gutterBottom>{t("test_device_title")}</Typography>
                     <FormControl sx={{ width: "100%", maxWidth: 400 }}>
                         <TextField
-                            label="Adres IP lub hostname"
+                            label={t("ip_hostname_label")}
                             variant="outlined"
                             size="small"
                             value={pingAddress}
                             onChange={e => setPingAddress(e.target.value)}
                             onKeyDown={e => e.key === "Enter" && handlePing()}
                         />
-                        <FormHelperText>Test urządzenia w sieci lokalnej lub zewnętrznej</FormHelperText>
+                        <FormHelperText>{t("ping_helper")}</FormHelperText>
                         <Button
                             variant="contained"
                             onClick={handlePing}
                             disabled={pinging || !pingAddress.trim()}
                             sx={{ mt: 1, width: "fit-content" }}
                         >
-                            {pinging ? "Pingowanie..." : "Ping"}
+                            {pinging ? t("pinging_ellipsis") : "Ping"}
                         </Button>
                     </FormControl>
                     {pingResponses.length > 0 && (
                         <Box sx={{ mt: 2, p: 1.5, bgcolor: "#1a1a2e", borderRadius: 1 }}>
                             <Typography variant="caption" sx={{ color: "#8b949e", fontFamily: "monospace", display: "block", mb: 0.5 }}>
-                                Ping {pingAddress} — 4 żądania:
+                                Ping {pingAddress} {t("ping_requests_suffix")}
                             </Typography>
                             {pingResponses.map((msg, i) => (
                                 <Typography key={i} variant="body2" sx={{ color: "#4caf50", fontFamily: "monospace", fontSize: "0.78rem" }}>

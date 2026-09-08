@@ -11,9 +11,11 @@ import {
     FormControl,
     Link,
 } from "@mui/material";
+import { useLang } from "./translation";
 
 const LoginPage = () => {
     const navigate = useNavigate();
+    const { t } = useLang();
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
 
@@ -35,19 +37,24 @@ const LoginPage = () => {
             navigate("/floor-plan");
         } catch (error) {
             console.error("Error: ", error);
-            alert("Niepoprawy login lub hasło");
+            // error.response brak = żądanie w ogóle nie doleciało do backendu
+            // (serwer wyłączony, zły adres API, CORS) — to nie ma nic
+            // wspólnego ze złym loginem/hasłem, więc nie mów że hasło złe.
+            alert(error.response ? t("invalid_credentials_alert") : t("connection_error_alert"));
         }
     };
 
     return (
         <Box
             sx={{
-                width: "30vw",
+                width: { xs: "90%", sm: "70%", md: "30vw" },
+                maxWidth: 420,
+                boxSizing: "border-box",
                 backgroundColor: "#031322",
-                margin: "0 auto",
+                margin: { xs: "5vh auto 0", md: "0 auto" },
                 borderRadius: "30px",
                 boxShadow: "10px 14px 20px rgba(1, 1, 1, 0.8)",
-                p: 5,
+                p: { xs: 3, sm: 5 },
                 textAlign: "center",
             }}
         >
@@ -55,16 +62,16 @@ const LoginPage = () => {
                 component="h1"
                 variant="h4"
                 sx={{
-                    fontSize: "48px",
+                    fontSize: { xs: "1.9rem", sm: "2.6rem", md: "3rem" },
                     color: "white",
-                    mb: 5,
+                    mb: { xs: 3, sm: 5 },
                     fontWeight: 700,
                     textDecoration: "underline",
                     textDecorationColor: "gold",
                     textShadow: "1px 8px 10px rgba(66, 68, 90, 1)",
                 }}
             >
-                LOGOWANIE
+                {t("login_title")}
             </Typography>
             <Box
                 component="form"
@@ -83,13 +90,13 @@ const LoginPage = () => {
                         htmlFor="username"
                         sx={{ color: "white", mb: 1, textAlign: "left" }}
                     >
-                        Nazwa
+                        {t("login_username_label")}
                     </FormLabel>
                     <TextField
                         required
                         id="username"
                         variant="outlined"
-                        placeholder="Wpisz nazwę użytkownika"
+                        placeholder={t("username_placeholder")}
                         onChange={handleInputChange(setUsername)}
                         autoFocus
                         sx={{
@@ -104,7 +111,7 @@ const LoginPage = () => {
                         htmlFor="password"
                         sx={{ color: "white", mb: 1, textAlign: "left" }}
                     >
-                        Hasło
+                        {t("password_label")}
                     </FormLabel>
                     <TextField
                         required
@@ -125,8 +132,9 @@ const LoginPage = () => {
                     variant="contained"
                     type="submit"
                     onClick={handleLogin}
+                    disabled={!username.trim() || !password.trim()}
                     sx={{
-                        width: "30%",
+                        width: { xs: "100%", sm: "60%" },
                         padding: "0.75rem",
                         fontSize: "18px",
                         borderRadius: "20px",
@@ -139,6 +147,11 @@ const LoginPage = () => {
                             backgroundColor: "#1A1D21",
                             color: "orange",
                             borderColor: "#FFD700",
+                        },
+                        "&.Mui-disabled": {
+                            backgroundColor: "#1a1a1a",
+                            color: "rgba(255,255,255,0.3)",
+                            borderColor: "rgba(255,255,255,0.2)",
                         },
                     }}
                 >

@@ -4,12 +4,14 @@ import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
 import { useRealTimeData } from "./RealTimeDataContext";
+import { useLang } from "./translation";
 import { Box, Typography, IconButton, Chip, TextField, Button, Alert, Switch, FormControlLabel } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import BoltIcon from "@mui/icons-material/Bolt";
 
 export default function VoltageDetail() {
     const navigate = useNavigate();
+    const { t } = useLang();
     const accessToken = localStorage.getItem("JWT");
 
     const { voltage = null } = useRealTimeData();
@@ -56,7 +58,7 @@ export default function VoltageDetail() {
             );
         } catch (error) {
             setEnabled(!next);
-            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd zapisu." });
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || t("save_error") });
             setTimeout(() => setAlarmStatus(null), 2500);
         }
     };
@@ -71,7 +73,7 @@ export default function VoltageDetail() {
         const minVal = Number(minInput);
         const maxVal = Number(maxInput);
         if (Number.isNaN(minVal) || Number.isNaN(maxVal) || minVal >= maxVal) {
-            setSaveStatus({ type: "error", message: "Wartość minimalna musi być mniejsza niż maksymalna." });
+            setSaveStatus({ type: "error", message: t("err_min_lt_max") });
             return;
         }
         try {
@@ -80,10 +82,10 @@ export default function VoltageDetail() {
                 { min_voltage: minVal, max_voltage: maxVal },
                 { headers: { Authorization: `Bearer ${accessToken}` } },
             );
-            setSaveStatus({ type: "success", message: "Progi zapisane." });
+            setSaveStatus({ type: "success", message: t("thresholds_saved") });
             setTimeout(() => setSaveStatus(null), 2500);
         } catch (error) {
-            setSaveStatus({ type: "error", message: error.response?.data?.message || "Błąd zapisu progów." });
+            setSaveStatus({ type: "error", message: error.response?.data?.message || t("save_thresholds_error") });
         }
     };
 
@@ -92,9 +94,9 @@ export default function VoltageDetail() {
             await axios.post(`${API_BASE}/sensors/voltage/simulate`, {}, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
-            setAlarmStatus({ type: "success", message: "Alarm testowy wywołany — sprawdź powiadomienia." });
+            setAlarmStatus({ type: "success", message: t("alarm_test_triggered") });
         } catch (error) {
-            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd wywołania testu." });
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || t("test_trigger_error") });
         }
         setTimeout(() => setAlarmStatus(null), 3000);
     };
@@ -105,9 +107,9 @@ export default function VoltageDetail() {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             setAcknowledged(true);
-            setAlarmStatus({ type: "success", message: "Alarm potwierdzony." });
+            setAlarmStatus({ type: "success", message: t("alarm_acknowledged_msg") });
         } catch (error) {
-            setAlarmStatus({ type: "error", message: error.response?.data?.message || "Błąd potwierdzania alarmu." });
+            setAlarmStatus({ type: "error", message: error.response?.data?.message || t("ack_error") });
         }
         setTimeout(() => setAlarmStatus(null), 2500);
     };
@@ -119,20 +121,35 @@ export default function VoltageDetail() {
                     <IconButton size="small" onClick={() => navigate("/")}>
                         <ArrowBackIcon fontSize="small" />
                     </IconButton>
-                    <Typography variant="h5" fontWeight="bold" sx={{ color: "#1a1a2e" }}>
-                        Napięcie zasilania UPS
-                    </Typography>
+                    <Box>
+                        <Typography variant="h5" fontWeight="bold" sx={{ color: "#1a1a2e" }}>
+                            {t("nav_voltage")}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            {t("live_reading_caption")}
+                        </Typography>
+                        <Typography
+                            variant="body2" onClick={() => navigate("/settings#powiadomienia")}
+                            sx={{
+                                color: "#1565c0", fontWeight: "bold", cursor: "pointer", display: "inline-block",
+                                fontSize: "0.95rem", mt: 0.5,
+                                "&:hover": { textDecoration: "underline" },
+                            }}
+                        >
+                            {t("configure_notifications_link")}
+                        </Typography>
+                    </Box>
                 </Box>
 
                 <FormControlLabel
                     sx={{ mb: 2 }}
                     control={<Switch checked={enabled} onChange={handleToggleEnabled} />}
-                    label="Czujnik podłączony"
+                    label={t("sensor_connected")}
                 />
 
                 {!enabled ? (
                     <Alert severity="warning" sx={{ mb: 2 }}>
-                        Czujnik nie jest podłączony. Włącz powyżej, gdy podłączysz realny czujnik napięcia.
+                        {t("voltage_not_connected_msg")}
                     </Alert>
                 ) : (
                     <>
@@ -162,24 +179,24 @@ export default function VoltageDetail() {
                                 color: !active ? "#2e7d32" : acknowledged ? "#8a6d00" : "#c62828",
                             }}>
                                 {!active
-                                    ? "Brak alarmu"
+                                    ? t("no_alarm")
                                     : acknowledged
-                                        ? "Potwierdzony — czeka na powrót do normy"
-                                        : "ALARM — przekroczono próg, wymaga potwierdzenia"}
+                                        ? t("ack_waiting_normal")
+                                        : t("alarm_exceeded_needs_ack")}
                             </Typography>
                             {lastTriggeredAt && (
                                 <Typography variant="caption" color="text.secondary">
-                                    Ostatnio wywołany: {lastTriggeredAt}
+                                    {t("last_triggered")}: {lastTriggeredAt}
                                 </Typography>
                             )}
                         </Box>
 
                         <Box sx={{ display: "flex", gap: 1.5, mb: 2, flexWrap: "wrap" }}>
                             <Button variant="outlined" onClick={handleSimulate}>
-                                Symuluj alarm (test)
+                                {t("simulate_alarm_test")}
                             </Button>
                             <Button variant="contained" color="error" onClick={handleAcknowledge} disabled={!active || acknowledged}>
-                                Potwierdź alarm
+                                {t("acknowledge_alarm")}
                             </Button>
                         </Box>
 
@@ -191,21 +208,21 @@ export default function VoltageDetail() {
 
                         <Box sx={{ bgcolor: "#f0f2f8", border: "1px solid #d5dae5", borderRadius: 1.5, p: 2, mb: 2 }}>
                             <Typography variant="subtitle2" sx={{ color: "#333", fontWeight: "bold", mb: 1 }}>
-                                Progi alarmowe (V)
+                                {t("voltage_thresholds_title")}
                             </Typography>
                             <Box sx={{ display: "flex", gap: 2, alignItems: "center", flexWrap: "wrap" }}>
                                 <TextField
-                                    label="Min" type="number" size="small" value={minInput}
+                                    label={t("min")} type="number" size="small" value={minInput}
                                     onChange={e => setMinInput(e.target.value)}
                                     sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
                                 />
                                 <TextField
-                                    label="Max" type="number" size="small" value={maxInput}
+                                    label={t("max")} type="number" size="small" value={maxInput}
                                     onChange={e => setMaxInput(e.target.value)}
                                     sx={{ width: 110, bgcolor: "white", borderRadius: 1 }}
                                 />
                                 <Button variant="contained" size="small" onClick={handleSaveThresholds}>
-                                    Zapisz progi
+                                    {t("save_thresholds")}
                                 </Button>
                             </Box>
                             {saveStatus && (
@@ -214,16 +231,6 @@ export default function VoltageDetail() {
                                 </Alert>
                             )}
                         </Box>
-
-                        <Typography
-                            variant="body2" onClick={() => navigate("/settings#powiadomienia")}
-                            sx={{
-                                color: "#1565c0", fontWeight: "bold", cursor: "pointer", display: "inline-block",
-                                "&:hover": { textDecoration: "underline" },
-                            }}
-                        >
-                            Skonfiguruj powiadomienia dla tego zdarzenia →
-                        </Typography>
                     </>
                 )}
             </Box>

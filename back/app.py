@@ -3,6 +3,7 @@ from flask import Flask, Response, request, jsonify, send_from_directory
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
 from models import db, User, Setting, Log, Layout, DeviceSensor, DeviceSensorHistory, NotificationGroup, NotificationRecipient, NotificationRule, NOTIFICATION_EVENT_TYPES, AlarmState, ALARM_EVENT_TYPES, DeviceAlarmState, VoltageThreshold, DeviceSensorSettings, alarm_should_fire, is_within_schedule, SmtpSettings, DEFAULT_SCHEDULE
+from translation import t
 from pythonping import ping
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -48,19 +49,19 @@ def hello_world():
 def register():
     current_user = User.get_user_by_username(get_jwt_identity())
     if not current_user or not current_user.is_admin:
-        return jsonify({'message': 'Brak uprawnień'}), 403
+        return jsonify({'message': t('Brak uprawnień')}), 403
 
     data = request.get_json()
     username = data.get('username')
     password = data.get('password')
     is_admin = data.get('isAdmin', False)
     if not username or not password:
-        return jsonify({'message': 'Brak danych'}), 400
+        return jsonify({'message': t('Brak danych')}), 400
     if User.get_user_by_username(username):
-        return jsonify({'message': 'Użytkownik o takim loginie istnieje'}), 400
+        return jsonify({'message': t('Użytkownik o takim loginie istnieje')}), 400
     hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
     User.add_user(username, hashed_password, is_admin)
-    return jsonify({'message': 'Użytkownik utworzony'}), 200
+    return jsonify({'message': t('Użytkownik utworzony')}), 200
 
 
 @app.route('/users', methods=['GET'])
@@ -68,7 +69,7 @@ def register():
 def get_users():
     current_user = User.get_user_by_username(get_jwt_identity())
     if not current_user or not current_user.is_admin:
-        return jsonify({'message': 'Brak uprawnień'}), 403
+        return jsonify({'message': t('Brak uprawnień')}), 403
     return jsonify([
         {'id': user.id, 'username': user.username, 'isadmin': user.is_admin}
         for user in User.get_all_users()
@@ -80,13 +81,13 @@ def get_users():
 def delete_user(user_id):
     current_user = User.get_user_by_username(get_jwt_identity())
     if not current_user or not current_user.is_admin:
-        return jsonify({'message': 'Brak uprawnień'}), 403
+        return jsonify({'message': t('Brak uprawnień')}), 403
     if current_user.id == user_id:
-        return jsonify({'message': 'Nie możesz usunąć własnego konta'}), 400
+        return jsonify({'message': t('Nie możesz usunąć własnego konta')}), 400
     if not db.session.get(User, user_id):
-        return jsonify({'message': 'Użytkownik nie znaleziony'}), 404
+        return jsonify({'message': t('Użytkownik nie znaleziony')}), 404
     User.delete_user(user_id)
-    return jsonify({'message': 'Użytkownik usunięty'}), 200
+    return jsonify({'message': t('Użytkownik usunięty')}), 200
 
 
 @app.route('/login', methods=['POST'])
@@ -98,7 +99,7 @@ def login():
     if user is None or not check_password_hash(user.password, password):
         Log.add_log(datetime.now(), 'Logowanie', True,
                     f'Nieudana próba logowania: {username} (IP: {request.remote_addr})')
-        return jsonify({'message': 'Nieprawidłowe dane logowania'}), 401
+        return jsonify({'message': t('Nieprawidłowe dane logowania')}), 401
     access_token = create_access_token(identity=username)
     Log.add_log(datetime.now(), 'Logowanie', False,
                 f'Zalogowano jako {username} (IP: {request.remote_addr})')
@@ -110,7 +111,7 @@ def login():
 def logout():
     current_user = get_jwt_identity()
     Log.add_log(datetime.now(), 'Wylogowanie', False, f'Wylogowano: {current_user}')
-    return jsonify({'message': 'Wylogowano'}), 200
+    return jsonify({'message': t('Wylogowano')}), 200
 
 
 @app.route('/users/me', methods=['GET'])
@@ -130,7 +131,7 @@ def save_layout():
     layout = Layout(data=data)
     db.session.add(layout)
     db.session.commit()
-    return jsonify({'message': 'Layout zapisany', 'id': layout.id}), 201
+    return jsonify({'message': t('Layout zapisany'), 'id': layout.id}), 201
 
 
 @app.route('/layouts/<int:layout_id>', methods=['GET'])
@@ -152,7 +153,7 @@ def update_layout(layout_id):
         return jsonify({'error': 'Brak danych'}), 400
     layout.data = data
     db.session.commit()
-    return jsonify({'message': 'Layout zaktualizowany'}), 200
+    return jsonify({'message': t('Layout zaktualizowany')}), 200
 
 
 def generate_frames():
@@ -169,13 +170,13 @@ def capture_video():
 @jwt_required()
 def start_recording():
     if sensor.is_recording:
-        return jsonify({'message': 'Kamera już nagrywa'}), 403
+        return jsonify({'message': t('Kamera już nagrywa')}), 403
     video_name = camera.start_recording()
     if video_name is None:
-        return jsonify({'message': 'Nie można uruchomić nagrywania'}), 500
+        return jsonify({'message': t('Nie można uruchomić nagrywania')}), 500
     sensor.is_user_recording = True
     sensor.video_name = video_name.replace('.mp4', '')
-    return jsonify({'message': 'Nagrywanie rozpoczęte', 'videoName': video_name}), 200
+    return jsonify({'message': t('Nagrywanie rozpoczęte'), 'videoName': video_name}), 200
 
 
 @app.route('/camera/recording', methods=['DELETE'])
@@ -183,7 +184,7 @@ def start_recording():
 def stop_recording():
     camera.stop_recording()
     sensor.is_user_recording = False
-    return jsonify({'message': 'Nagrywanie zatrzymane'}), 200
+    return jsonify({'message': t('Nagrywanie zatrzymane')}), 200
 
 
 @app.route('/videos', methods=['GET'])
@@ -206,9 +207,9 @@ def delete_video(video_name):
     safe_name = os.path.basename(video_name)
     path = os.path.join(VIDEOS_DIR, safe_name)
     if not os.path.isfile(path):
-        return jsonify({'message': 'Wideo nie znalezione'}), 404
+        return jsonify({'message': t('Wideo nie znalezione')}), 404
     os.remove(path)
-    return jsonify({'message': 'Wideo usunięte'}), 200
+    return jsonify({'message': t('Wideo usunięte')}), 200
 
 
 @app.route('/videos', methods=['DELETE'])
@@ -217,7 +218,7 @@ def delete_all_videos():
     for f in os.listdir(VIDEOS_DIR):
         if f.endswith(('.mp4', '.avi', '.mov')):
             os.remove(os.path.join(VIDEOS_DIR, f))
-    return jsonify({'message': 'Wszystkie wideo usunięte'}), 200
+    return jsonify({'message': t('Wszystkie wideo usunięte')}), 200
 
 
 @app.route('/notification-groups', methods=['POST'])
@@ -226,11 +227,11 @@ def add_notification_group():
     data = request.get_json()
     name = data.get('name')
     if not name:
-        return jsonify({'message': 'Nazwa grupy wymagana'}), 400
+        return jsonify({'message': t('Nazwa grupy wymagana')}), 400
     group = NotificationGroup.add_group(name)
     if not group:
-        return jsonify({'message': 'Grupa o takiej nazwie już istnieje'}), 400
-    return jsonify({'message': 'Grupa dodana', 'id': group.id}), 201
+        return jsonify({'message': t('Grupa o takiej nazwie już istnieje')}), 400
+    return jsonify({'message': t('Grupa dodana'), 'id': group.id}), 201
 
 
 @app.route('/notification-groups', methods=['GET'])
@@ -242,8 +243,8 @@ def get_notification_groups():
 @jwt_required()
 def delete_notification_group(group_id):
     if not NotificationGroup.delete_group(group_id):
-        return jsonify({'message': 'Grupa nie znaleziona'}), 404
-    return jsonify({'message': 'Grupa usunięta'}), 200
+        return jsonify({'message': t('Grupa nie znaleziona')}), 404
+    return jsonify({'message': t('Grupa usunięta')}), 200
 
 
 @app.route('/notification-groups/<int:group_id>/recipients', methods=['POST'])
@@ -253,19 +254,19 @@ def add_notification_recipient(group_id):
     email = (data.get('email') or '').strip() or None
     phone_number = (data.get('phone_number') or '').strip() or None
     if not email and not phone_number:
-        return jsonify({'message': 'Podaj e-mail lub numer telefonu'}), 400
+        return jsonify({'message': t('Podaj e-mail lub numer telefonu')}), 400
     recipient = NotificationGroup.add_recipient(group_id, email=email, phone_number=phone_number)
     if not recipient:
-        return jsonify({'message': 'Grupa nie znaleziona'}), 404
-    return jsonify({'message': 'Odbiorca dodany', 'id': recipient.id}), 201
+        return jsonify({'message': t('Grupa nie znaleziona')}), 404
+    return jsonify({'message': t('Odbiorca dodany'), 'id': recipient.id}), 201
 
 
 @app.route('/notification-groups/<int:group_id>/recipients/<int:recipient_id>', methods=['DELETE'])
 @jwt_required()
 def delete_notification_recipient(group_id, recipient_id):
     if not NotificationGroup.delete_recipient(recipient_id):
-        return jsonify({'message': 'Odbiorca nie znaleziony'}), 404
-    return jsonify({'message': 'Odbiorca usunięty'}), 200
+        return jsonify({'message': t('Odbiorca nie znaleziony')}), 404
+    return jsonify({'message': t('Odbiorca usunięty')}), 200
 
 
 @app.route('/notification-groups/<int:group_id>/schedule', methods=['PUT'])
@@ -274,11 +275,11 @@ def update_notification_group_schedule(group_id):
     data = request.get_json()
     schedule = data.get('schedule')
     if not schedule or len(schedule) != 168 or any(c not in '01' for c in schedule):
-        return jsonify({'message': 'Nieprawidłowy harmonogram'}), 400
+        return jsonify({'message': t('Nieprawidłowy harmonogram')}), 400
     group = NotificationGroup.update_schedule(group_id, schedule)
     if not group:
-        return jsonify({'message': 'Grupa nie znaleziona'}), 404
-    return jsonify({'message': 'Harmonogram zapisany'}), 200
+        return jsonify({'message': t('Grupa nie znaleziona')}), 404
+    return jsonify({'message': t('Harmonogram zapisany')}), 200
 
 
 @app.route('/notification-rules', methods=['GET'])
@@ -297,12 +298,12 @@ def update_notification_rules():
     for rule in rules:
         event_type = rule.get('event_type')
         if event_type not in NOTIFICATION_EVENT_TYPES or event_type in seen_types:
-            return jsonify({'message': 'Nieprawidłowy typ zdarzenia'}), 400
+            return jsonify({'message': t('Nieprawidłowy typ zdarzenia')}), 400
         seen_types.add(event_type)
         if rule.get('group_id') is not None and not db.session.get(NotificationGroup, rule['group_id']):
-            return jsonify({'message': 'Grupa nie istnieje'}), 400
+            return jsonify({'message': t('Grupa nie istnieje')}), 400
     NotificationRule.update_all(rules)
-    return jsonify({'message': 'Reguły zaktualizowane'}), 200
+    return jsonify({'message': t('Reguły zaktualizowane')}), 200
 
 
 EVENT_TYPE_SENSOR_NAMES = {
@@ -326,25 +327,25 @@ def get_alarm_states():
 @jwt_required()
 def simulate_sensor_alert(event_type):
     if event_type not in ALARM_EVENT_TYPES:
-        return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
+        return jsonify({'message': t('Nieprawidłowy typ czujnika')}), 400
     sensor._raise_alert(
         event_type, EVENT_TYPE_SENSOR_NAMES[event_type], True,
         EVENT_TYPE_TEST_DESCRIPTIONS[event_type], force=True,
     )
-    return jsonify({'message': 'Alarm testowy wywołany'}), 200
+    return jsonify({'message': t('Alarm testowy wywołany')}), 200
 
 
 @app.route('/sensors/<event_type>/acknowledge', methods=['DELETE'])
 @jwt_required()
 def acknowledge_sensor_alert(event_type):
     if event_type not in ALARM_EVENT_TYPES:
-        return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
+        return jsonify({'message': t('Nieprawidłowy typ czujnika')}), 400
     if not AlarmState.acknowledge(event_type):
-        return jsonify({'message': 'Stan alarmu nie znaleziony'}), 404
+        return jsonify({'message': t('Stan alarmu nie znaleziony')}), 404
     current_user = get_jwt_identity()
     Log.add_log(datetime.now(), EVENT_TYPE_SENSOR_NAMES[event_type], False,
                 f'Alarm potwierdzony przez {current_user}')
-    return jsonify({'message': 'Alarm potwierdzony'}), 200
+    return jsonify({'message': t('Alarm potwierdzony')}), 200
 
 
 @app.route('/settings', methods=['PUT'])
@@ -355,11 +356,12 @@ def save_settings():
         data.get('id'),
         data.get('recording_seconds'),
         data.get('auto_save_layout'),
+        data.get('recording_on_motion_enabled'),
     )
     if ok:
         sensor.update_settings(Setting.get_all_settings())
-        return jsonify({'message': 'Ustawienia zapisane'}), 200
-    return jsonify({'message': 'Błąd zapisu ustawień'}), 400
+        return jsonify({'message': t('Ustawienia zapisane')}), 200
+    return jsonify({'message': t('Błąd zapisu ustawień')}), 400
 
 
 @app.route('/voltage-threshold', methods=['GET'])
@@ -378,7 +380,7 @@ def save_voltage_enabled():
     data = request.get_json()
     enabled = data.get('enabled')
     if not isinstance(enabled, bool):
-        return jsonify({'message': 'Brak danych'}), 400
+        return jsonify({'message': t('Brak danych')}), 400
     threshold = VoltageThreshold.set_enabled(enabled)
     sensor.update_voltage_enabled(enabled)
     return jsonify({'enabled': threshold.enabled}), 200
@@ -391,9 +393,9 @@ def save_voltage_threshold():
     min_voltage = data.get('min_voltage')
     max_voltage = data.get('max_voltage')
     if min_voltage is None or max_voltage is None:
-        return jsonify({'message': 'Brak danych'}), 400
+        return jsonify({'message': t('Brak danych')}), 400
     if min_voltage >= max_voltage:
-        return jsonify({'message': 'Wartość minimalna musi być mniejsza niż maksymalna'}), 400
+        return jsonify({'message': t('Wartość minimalna musi być mniejsza niż maksymalna')}), 400
     threshold = VoltageThreshold.update(min_voltage, max_voltage)
     sensor.update_voltage_threshold(min_voltage, max_voltage)
     return jsonify({'min_voltage': threshold.min_voltage, 'max_voltage': threshold.max_voltage}), 200
@@ -437,7 +439,7 @@ def test_smtp_settings():
     data = request.get_json()
     to_address = data.get('to_address')
     if not to_address:
-        return jsonify({'message': 'Adres odbiorcy wymagany'}), 400
+        return jsonify({'message': t('Adres odbiorcy wymagany')}), 400
     from notifications import send_email
     try:
         send_email([to_address], 'Test SMTP — Monitoring System',
@@ -445,7 +447,24 @@ def test_smtp_settings():
                    raise_on_error=True)
     except Exception as e:
         return jsonify({'message': f'Błąd wysyłki: {e}'}), 502
-    return jsonify({'message': 'Wysłano — sprawdź skrzynkę (też SPAM).'}), 200
+    return jsonify({'message': t('Wysłano — sprawdź skrzynkę (też SPAM).')}), 200
+
+
+@app.route('/sms-settings/test', methods=['POST'])
+@jwt_required()
+def test_sms_settings():
+    data = request.get_json()
+    to_number = (data.get('to_number') or '').strip()
+    if not to_number:
+        return jsonify({'message': t('Numer odbiorcy wymagany')}), 400
+    from notifications import send_sms
+    try:
+        send_sms([to_number], 'Test SMS — Monitoring System.', raise_on_error=True)
+    except Exception as e:
+        return jsonify({'message': f'Błąd wysyłki: {e}'}), 502
+    if os.getenv('SMS_BACKEND', 'mock') != 'sim800':
+        return jsonify({'message': t('Backend mock — nic fizycznie nie poleciało, sprawdź log backendu.')}), 200
+    return jsonify({'message': t('Wysłano — sprawdź telefon.')}), 200
 
 
 @app.route('/settings-and-phone-numbers', methods=['GET'])
@@ -475,7 +494,7 @@ def delete_logs():
         Log.remove_logs(ids)
     else:
         Log.remove_all_logs()
-    return jsonify({'message': 'Logi usunięte'}), 200
+    return jsonify({'message': t('Logi usunięte')}), 200
 
 
 @app.route('/real-time-data', methods=['GET'])
@@ -628,7 +647,7 @@ def save_device_sensor_settings():
     data = request.get_json()
     enabled = data.get('enabled')
     if not isinstance(enabled, bool):
-        return jsonify({'message': 'Brak danych'}), 400
+        return jsonify({'message': t('Brak danych')}), 400
     settings = DeviceSensorSettings.set_enabled(enabled)
     return jsonify({'enabled': settings.enabled}), 200
 
@@ -653,7 +672,7 @@ def get_device_sensors(rack_id):
 @jwt_required()
 def simulate_device_alert(rack_id, metric, severity):
     if metric not in DEVICE_METRIC_LABELS or severity not in DEVICE_SEVERITY_LABELS:
-        return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
+        return jsonify({'message': t('Nieprawidłowy typ czujnika')}), 400
     device = DeviceSensor.get_or_create_reading(rack_id)
     value = device.temperature if metric == 'temperature' else device.humidity
     if metric == 'temperature':
@@ -663,20 +682,20 @@ def simulate_device_alert(rack_id, metric, severity):
         min_v = device.min_humidity_critical if severity == 'critical' else device.min_humidity
         max_v = device.max_humidity_critical if severity == 'critical' else device.max_humidity
     _raise_device_alert(rack_id, metric, severity, value, min_v, max_v, force=True)
-    return jsonify({'message': 'Alarm zasymulowany'}), 200
+    return jsonify({'message': t('Alarm zasymulowany')}), 200
 
 
 @app.route('/device-sensors/<rack_id>/<metric>/<severity>/acknowledge', methods=['DELETE'])
 @jwt_required()
 def acknowledge_device_alert(rack_id, metric, severity):
     if metric not in DEVICE_METRIC_LABELS or severity not in DEVICE_SEVERITY_LABELS:
-        return jsonify({'message': 'Nieprawidłowy typ czujnika'}), 400
+        return jsonify({'message': t('Nieprawidłowy typ czujnika')}), 400
     if not DeviceAlarmState.acknowledge(rack_id, metric, severity):
-        return jsonify({'message': 'Stan alarmu nie znaleziony'}), 404
+        return jsonify({'message': t('Stan alarmu nie znaleziony')}), 404
     current_user = get_jwt_identity()
     Log.add_log(datetime.now(), f'Szafa {rack_id}', False,
                 f'Alarm ({DEVICE_METRIC_LABELS[metric]}, {DEVICE_SEVERITY_LABELS[severity]}) potwierdzony przez {current_user}')
-    return jsonify({'message': 'Alarm potwierdzony'}), 200
+    return jsonify({'message': t('Alarm potwierdzony')}), 200
 
 
 @app.route('/device-sensors/<rack_id>/thresholds', methods=['PUT'])
@@ -688,12 +707,12 @@ def update_device_sensor_thresholds(rack_id):
               'min_humidity_critical', 'max_humidity_critical', 'alert_delay_seconds']
     values = {f: data.get(f) for f in fields}
     if any(v is None for v in values.values()):
-        return jsonify({'message': 'Brak danych'}), 400
+        return jsonify({'message': t('Brak danych')}), 400
     if values['min_temperature'] >= values['max_temperature'] or values['min_humidity'] >= values['max_humidity']:
-        return jsonify({'message': 'Wartość minimalna musi być mniejsza niż maksymalna'}), 400
+        return jsonify({'message': t('Wartość minimalna musi być mniejsza niż maksymalna')}), 400
     if values['min_temperature_critical'] >= values['max_temperature_critical'] or \
             values['min_humidity_critical'] >= values['max_humidity_critical']:
-        return jsonify({'message': 'Wartość minimalna musi być mniejsza niż maksymalna (krytyczny)'}), 400
+        return jsonify({'message': t('Wartość minimalna musi być mniejsza niż maksymalna (krytyczny)')}), 400
 
     device = DeviceSensor.update_thresholds(
         rack_id,
@@ -704,7 +723,7 @@ def update_device_sensor_thresholds(rack_id):
         values['alert_delay_seconds'],
     )
     if device is None:
-        return jsonify({'message': 'Urządzenie nie znalezione'}), 404
+        return jsonify({'message': t('Urządzenie nie znalezione')}), 404
     return jsonify(_device_sensor_dict(rack_id, device)), 200
 
 
@@ -733,7 +752,7 @@ def get_device_sensor_history(rack_id):
 @jwt_required()
 def clear_device_sensor_history(rack_id):
     DeviceSensor.clear_history(rack_id)
-    return jsonify({'message': 'Wykres wyczyszczony'}), 200
+    return jsonify({'message': t('Wykres wyczyszczony')}), 200
 
 
 @app.route('/device-sensors/<rack_id>/records', methods=['DELETE'])
@@ -741,7 +760,7 @@ def clear_device_sensor_history(rack_id):
 def clear_device_sensor_records(rack_id):
     device = DeviceSensor.clear_records(rack_id)
     if device is None:
-        return jsonify({'message': 'Urządzenie nie znalezione'}), 404
+        return jsonify({'message': t('Urządzenie nie znalezione')}), 404
     return jsonify(_device_sensor_dict(rack_id, device)), 200
 
 
@@ -870,7 +889,7 @@ def get_config_backup():
 def restore_config_backup():
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or 'version' not in data:
-        return jsonify({'message': 'Nieprawidłowy plik konfiguracji'}), 400
+        return jsonify({'message': t('Nieprawidłowy plik konfiguracji')}), 400
     try:
         NotificationRule.seed_defaults()
         _restore_settings(data.get('settings', []))
@@ -883,7 +902,7 @@ def restore_config_backup():
         _restore_smtp(data.get('smtp_settings'))
     except (KeyError, TypeError, ValueError) as e:
         return jsonify({'message': f'Błąd przywracania konfiguracji: {e}'}), 400
-    return jsonify({'message': 'Konfiguracja przywrócona'}), 200
+    return jsonify({'message': t('Konfiguracja przywrócona')}), 200
 
 
 if __name__ == '__main__':

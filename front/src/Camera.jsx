@@ -5,8 +5,10 @@ import { API_BASE } from "./api";
 import { Button } from "@mui/material";
 import Layout from "./Layout";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
+import { useLang } from "./translation";
 
 const Camera = () => {
+    const { t } = useLang();
     const accessToken = localStorage.getItem("JWT");
     const navigate = useNavigate();
     const [videoName, setVideoName] = useState("");
@@ -60,19 +62,19 @@ const Camera = () => {
     return (
         <Layout>
             <div style={{ marginBottom: 10 }}>
-                <h1 style={{ color: "#031322" }}>Widok z kamery</h1>
+                <h1 style={{ color: "#031322" }}>{t("nav_camera")}</h1>
                 <Button
                     variant="contained"
                     color="primary"
                     onClick={handleBackToHome}
                 >
-                    <ArrowBackIcon></ArrowBackIcon> Strona główna
+                    <ArrowBackIcon></ArrowBackIcon> {t("nav_home")}
                 </Button>
             </div>
 
             <div>
                 {cameraNotDetected ? (
-                    <p>Kamera nie została podłączona</p>
+                    <p>{t("camera_not_detected")}</p>
                 ) : (
                     <div>
                         <media-theme-microvideo>
@@ -95,14 +97,14 @@ const Camera = () => {
                 {isRecording ? (
                     <div>
                         <p style={{ color: "black" }}>
-                            Nagrywanie wideo: {videoName}
+                            {t("recording_video_prefix")} {videoName}
                         </p>
                         <Button
                             variant="contained"
                             color="secondary"
                             onClick={handleStopRecording}
                         >
-                            Zakoncz nagrywanie
+                            {t("stop_recording")}
                         </Button>
                     </div>
                 ) : (
@@ -111,7 +113,7 @@ const Camera = () => {
                         color="primary"
                         onClick={handleStartRecording}
                     >
-                        Zacznij nagrywanie
+                        {t("start_recording")}
                     </Button>
                 )}
             </div>

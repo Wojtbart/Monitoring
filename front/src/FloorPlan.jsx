@@ -5,6 +5,7 @@ import axios from "axios";
 import { API_BASE } from "./api";
 import Layout from "./Layout";
 import { useRealTimeData } from "./RealTimeDataContext";
+import { useLang } from "./translation";
 import {
     Box, Button, Typography, Paper, Chip, IconButton, Menu, MenuItem, ListItemIcon, ListItemText,
     Dialog, DialogTitle, DialogContent, DialogActions, TextField, Tooltip,
@@ -88,7 +89,6 @@ const MOUNT_HEIGHT = { ceiling: ROOM.H - 0.02, wall: ROOM.H - 1.3, floor: 0.05 }
 // Warianty czujników dostępne do ręcznego dodania z paska nad rzutem —
 // pożar/gaz/ruch mają wariant sufitowy i ścienny, zalanie tylko podłogowy.
 const SENSOR_TYPE_LABELS = { fire: "Pożar", gas: "Gaz/Dym", water: "Zalanie", motion: "Ruch" };
-const MOUNT_LABELS = { ceiling: "sufit", wall: "ściana", floor: "podłoga" };
 const MOUNT_GLYPH = { ceiling: "⌃", wall: "▯", floor: "" };
 // Grupowane po typie (nie po pojedynczej opcji) — żeby w pasku dało się od
 // razu ogarnąć wzrokiem "to jest pożar, ma 2 warianty", zamiast siedmiu
@@ -290,6 +290,12 @@ function Sensor({ def, proj, alert, onDragStart, deletable, onContextMenuRequest
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function FloorPlan() {
     const navigate = useNavigate();
+    const { t } = useLang();
+    // Etykiety do WYŚWIETLENIA (tłumaczone) — SENSOR_TYPE_LABELS zostaje po
+    // polsku, bo to domyślna nazwa zapisywana w danych czujnika (addSensor),
+    // nie sam UI.
+    const sensorTypeLabel = type => t("sensor_" + type);
+    const mountLabel = mount => t("mount_" + mount);
     const containerRef = useRef(null);
     const stageRef     = useRef(null);
     const dragRef      = useRef(null);
@@ -449,7 +455,7 @@ export default function FloorPlan() {
             const { data } = await axios.post(`${API_BASE}/layouts`, payload, { headers });
             localStorage.setItem(FLOORPLAN_KEY, data.id);
             setSavedAt(new Date());
-        } catch (_) { alert("Błąd zapisu"); }
+        } catch (_) { alert(t("save_error")); }
         setSaving(false);
     };
 
@@ -549,7 +555,7 @@ export default function FloorPlan() {
         setCustomSensors(prev => prev.filter(s => s.id !== id));
 
     const configureSensor = s =>
-        navigate(s.type === "motion" ? "/settings#powiadomienia" : "/room-sensor/" + s.type);
+        navigate(s.type === "motion" ? "/settings#nagrywanie" : "/room-sensor/" + s.type);
 
     const handleSensorContextMenu = (e, sensor) => {
         setSensorContextMenu({ x: e.evt.clientX, y: e.evt.clientY, sensor });
@@ -598,7 +604,7 @@ export default function FloorPlan() {
             localStorage.setItem(key, data.id);
             setRackNames(prev => ({ ...prev, [rackId]: name }));
         } catch (_) {
-            alert("Błąd zapisu nazwy szafy");
+            alert(t("save_rack_name_error"));
         }
     };
 
@@ -636,7 +642,7 @@ export default function FloorPlan() {
         .filter(r => !rackRemoved[r.id])
         .map(r => ({ ...r, cx: rackXPos[r.id] ?? r.cx }))
         .sort((a, b) => a.cx - b.cx)
-        .map((r, i) => ({ ...r, label: rackNames[r.id] || `Szafa ${i + 1}` }));
+        .map((r, i) => ({ ...r, label: rackNames[r.id] || `${t("rack")} ${i + 1}` }));
 
     // ── Room geometry ──────────────────────────────────────────────────────────
     const ffl = proj(-ROOM.W / 2, 0,      0);
@@ -709,33 +715,34 @@ export default function FloorPlan() {
                 {/* Toolbar */}
                 <Paper elevation={2} sx={{ flexShrink: 0 }}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1, px: 2, pt: 0.75, pb: 0.5 }}>
-                        <Typography variant="subtitle2" fontWeight="bold">Serwerownia — widok</Typography>
+                        <Typography variant="subtitle2" fontWeight="bold">{t("fp_title")}</Typography>
                         {anyAlert && <Chip label="ALARM" color="error" size="small" icon={<WarningAmberIcon />} />}
                         <Box sx={{ flex: 1 }} />
                         <Chip size="small"
-                            label={doorOpen ? "Drzwi OTWARTE" : "Drzwi zamknięte"}
+                            label={doorOpen ? t("door_open") : t("door_closed")}
                             color={doorOpen ? "error" : "success"} variant="outlined" />
-                        {autoSave && <Chip size="small" variant="outlined" color="success" label="Auto-zapis" />}
+                        {autoSave && <Chip size="small" variant="outlined" color="success" label={t("auto_save")} />}
                         {Object.values(rackRemoved).some(Boolean) && (
                             <Chip size="small" variant="outlined" onClick={restoreRacks}
-                                label={`Przywróć usunięte szafy (${Object.values(rackRemoved).filter(Boolean).length})`} />
+                                label={`${t("restore_racks")} (${Object.values(rackRemoved).filter(Boolean).length})`} />
                         )}
                         {savedAt && (
                             <Typography variant="caption" color="text.secondary">
-                                Zapisano {savedAt.toLocaleTimeString()}
+                                {t("saved")} {savedAt.toLocaleTimeString()}
                             </Typography>
                         )}
                         <Button size="small" variant="contained" startIcon={<SaveIcon />}
                             onClick={saveLayout} disabled={saving}>
-                            Zapisz układ
+                            {t("save_layout")}
                         </Button>
                     </Box>
                     <Box sx={{
                         display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap",
                         px: 2, pb: 0.75, pt: 0.25, borderTop: "1px solid #eee",
+                        userSelect: "none",
                     }}>
                         <Typography variant="caption" color="text.secondary">
-                            Dodaj czujnik:
+                            {t("add_sensor")}:
                         </Typography>
                         <Box sx={{ display: "flex", gap: 1 }}>
                             {ADDABLE_SENSOR_GROUPS.map(({ type, mounts }) => (
@@ -745,14 +752,14 @@ export default function FloorPlan() {
                                 }}>
                                     <Typography sx={{ fontSize: "1rem", lineHeight: 1 }}>{ICONS[type]}</Typography>
                                     <Typography variant="caption" fontWeight="bold" color="text.secondary">
-                                        {SENSOR_TYPE_LABELS[type]}
+                                        {sensorTypeLabel(type)}
                                     </Typography>
                                     {mounts.map(mount => (
-                                        <Tooltip key={mount} title={`Przytrzymaj i przeciągnij na rzut: ${SENSOR_TYPE_LABELS[type]} (${MOUNT_LABELS[mount]})`}>
+                                        <Tooltip key={mount} title={`${t("hold_drag")}: ${sensorTypeLabel(type)} (${mountLabel(mount)})`}>
                                             <Chip
                                                 size="small"
-                                                label={MOUNT_LABELS[mount]}
-                                                onMouseDown={e => setPendingSensor({ type, mount, clientX: e.clientX, clientY: e.clientY })}
+                                                label={mountLabel(mount)}
+                                                onMouseDown={e => { e.preventDefault(); setPendingSensor({ type, mount, clientX: e.clientX, clientY: e.clientY }); }}
                                                 sx={{ height: 20, fontSize: "0.65rem", cursor: "grab" }}
                                             />
                                         </Tooltip>
@@ -761,9 +768,9 @@ export default function FloorPlan() {
                             ))}
                         </Box>
                         <Box sx={{ flex: 1 }} />
-                        <Chip size="small" variant="outlined" label="🖱️ Przeciągnij = przesuń" />
-                        <Chip size="small" variant="outlined" label="2×klik szafa = edycja" />
-                        <Chip size="small" variant="outlined" label="PPM czujnik = menu" />
+                        <Chip size="small" variant="outlined" label={t("hint_drag")} />
+                        <Chip size="small" variant="outlined" label={t("hint_dblclick_rack")} />
+                        <Chip size="small" variant="outlined" label={t("hint_rmb_sensor")} />
                     </Box>
                 </Paper>
 
@@ -850,7 +857,7 @@ export default function FloorPlan() {
                                     shadowColor={dColor} shadowBlur={doorOpen ? 8 : 2} shadowOpacity={0.8} />
                                 <Text text={ICONS.door} x={dsc.x - 5} y={dsc.y - 5 + 1}
                                     width={10} align="center" fontSize={6} />
-                                <Text text={doorOpen ? "OTWARTE" : "ZAMKN."}
+                                <Text text={doorOpen ? t("door_open_short") : t("door_closed_short")}
                                     x={dsc.x - 14} y={dsc.y + 7} width={28} align="center"
                                     fontSize={5} fill={dColor} fontStyle="bold" />
                             </Group>
@@ -873,11 +880,11 @@ export default function FloorPlan() {
             >
                 <MenuItem onClick={() => { configureSensor(sensorContextMenu.sensor); setSensorContextMenu(null); }}>
                     <ListItemIcon><SettingsIcon fontSize="small" /></ListItemIcon>
-                    <ListItemText>Konfiguruj</ListItemText>
+                    <ListItemText>{t("configure")}</ListItemText>
                 </MenuItem>
                 <MenuItem onClick={() => { deleteCustomSensor(sensorContextMenu.sensor.id); setSensorContextMenu(null); }}>
                     <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
-                    <ListItemText sx={{ color: "error.main" }}>Usuń</ListItemText>
+                    <ListItemText sx={{ color: "error.main" }}>{t("delete")}</ListItemText>
                 </MenuItem>
             </Menu>
 
@@ -889,19 +896,19 @@ export default function FloorPlan() {
             >
                 <MenuItem onClick={() => { openRenameDialog(rackContextMenu.rack); setRackContextMenu(null); }}>
                     <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
-                    <ListItemText>Zmień nazwę</ListItemText>
+                    <ListItemText>{t("rename")}</ListItemText>
                 </MenuItem>
                 <MenuItem onClick={() => removeRack(rackContextMenu.rack.id)}>
                     <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
-                    <ListItemText sx={{ color: "error.main" }}>Usuń</ListItemText>
+                    <ListItemText sx={{ color: "error.main" }}>{t("delete")}</ListItemText>
                 </MenuItem>
             </Menu>
 
             <Dialog open={!!renameDialog} onClose={() => setRenameDialog(null)} maxWidth="xs" fullWidth>
-                <DialogTitle>Zmień nazwę szafy</DialogTitle>
+                <DialogTitle>{t("rename_rack_title")}</DialogTitle>
                 <DialogContent>
                     <TextField
-                        autoFocus fullWidth margin="dense" label="Nazwa"
+                        autoFocus fullWidth margin="dense" label={t("name")}
                         value={renameDialog?.draft || ""}
                         onChange={e => setRenameDialog(prev => ({ ...prev, draft: e.target.value }))}
                         onKeyDown={e => {
@@ -913,7 +920,7 @@ export default function FloorPlan() {
                     />
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setRenameDialog(null)}>Anuluj</Button>
+                    <Button onClick={() => setRenameDialog(null)}>{t("cancel")}</Button>
                     <Button
                         variant="contained"
                         disabled={!renameDialog?.draft.trim()}
@@ -922,7 +929,7 @@ export default function FloorPlan() {
                             setRenameDialog(null);
                         }}
                     >
-                        Zapisz
+                        {t("save")}
                     </Button>
                 </DialogActions>
             </Dialog>

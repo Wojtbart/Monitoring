@@ -1,4 +1,5 @@
 import { Stage, Layer, Group, Line, Rect, Text } from "react-konva";
+import { useLang } from "./translation";
 
 export const DEVICE_TYPES = {
     server:   { label: "Serwer",      color: "#1e88e5" },
@@ -25,6 +26,7 @@ const C = {
 function pts(arr) { return arr.flatMap(p => [p.x, p.y]); }
 
 export default function RackVisual3D({ slots, rackSize, rackLabel, width = 190 }) {
+    const { t } = useLang();
     const bodyH = rackSize * ROW_H;
     const stageW = width + DEPTH + 4;
     const stageH = bodyH + DEPTH + 30;
@@ -50,7 +52,8 @@ export default function RackVisual3D({ slots, rackSize, rackLabel, width = 190 }
 
                 {/* Units */}
                 {slots.map(slot => {
-                    const dtype   = DEVICE_TYPES[slot.type] || DEVICE_TYPES.empty;
+                    const typeKey = DEVICE_TYPES[slot.type] ? slot.type : "empty";
+                    const dtype   = DEVICE_TYPES[typeKey];
                     const isEmpty = slot.type === "empty";
                     const h       = (slot.height || 1) * ROW_H;
                     const y       = fl.y + (slot.unit - 1) * ROW_H;
@@ -63,7 +66,7 @@ export default function RackVisual3D({ slots, rackSize, rackLabel, width = 190 }
                                 fill={isEmpty ? "transparent" : dtype.color}
                                 opacity={isEmpty ? 1 : 0.85} />
                             {showLabel && (
-                                <Text text={dtype.label} x={fl.x + 3} y={y + h / 2 - 4}
+                                <Text text={t("device_" + typeKey)} x={fl.x + 3} y={y + h / 2 - 4}
                                     width={width - 6} align="center" fontSize={8}
                                     fill="#fff" fontStyle="bold"
                                     shadowColor="#000" shadowBlur={2} shadowOpacity={0.8} />

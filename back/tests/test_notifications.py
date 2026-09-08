@@ -79,6 +79,6 @@ def test_send_sms_skips_when_no_recipients():
 def test_send_sms_uses_sim800_backend_when_configured(monkeypatch):
     monkeypatch.setenv('SMS_BACKEND', 'sim800')
     calls = []
-    monkeypatch.setattr('sim800.send_sms_sim800', lambda numbers, msg: calls.append((numbers, msg)))
+    monkeypatch.setattr('sim800.send_sms_sim800', lambda numbers, msg, **k: calls.append((numbers, msg)))
     notifications.send_sms(['+48123456789'], 'Test message')
     assert calls == [(['+48123456789'], 'Test message')]

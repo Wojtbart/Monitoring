@@ -8,10 +8,15 @@ def _login(client, app):
     return client.post('/login', json={'username': 'boss', 'password': 'pw123'}).get_json()['accessToken']
 
 
-def test_get_device_sensor_settings_defaults_enabled(client):
+def _enable(client, token):
+    client.put('/device-sensor-settings', json={'enabled': True},
+               headers={'Authorization': f'Bearer {token}'})
+
+
+def test_get_device_sensor_settings_defaults_disabled(client):
     resp = client.get('/device-sensor-settings')
     assert resp.status_code == 200
-    assert resp.get_json() == {'enabled': True}
+    assert resp.get_json() == {'enabled': False}
 
 
 def test_put_device_sensor_settings_requires_auth(client):
@@ -26,49 +31,48 @@ def test_put_device_sensor_settings_rejects_non_bool(client, app):
     assert resp.status_code == 400
 
 
-def test_put_device_sensor_settings_disables(client, app):
+def test_put_device_sensor_settings_enables(client, app):
     token = _login(client, app)
-    resp = client.put('/device-sensor-settings', json={'enabled': False},
+    resp = client.put('/device-sensor-settings', json={'enabled': True},
                        headers={'Authorization': f'Bearer {token}'})
     assert resp.status_code == 200
-    assert resp.get_json() == {'enabled': False}
+    assert resp.get_json() == {'enabled': True}
 
     with app.app_context():
-        assert DeviceSensorSettings.get_or_create().enabled is False
+        assert DeviceSensorSettings.get_or_create().enabled is True
 
 
-def test_get_device_sensors_when_disabled_no_existing_row_returns_disabled_only(client, app):
-    token = _login(client, app)
-    client.put('/device-sensor-settings', json={'enabled': False},
-               headers={'Authorization': f'Bearer {token}'})
-
+def test_get_device_sensors_when_disabled_no_existing_row_returns_disabled_only(client):
     resp = client.get('/device-sensors/A0')
     assert resp.status_code == 200
     assert resp.get_json() == {'enabled': False}
 
-    with app.app_context():
+    with client.application.app_context():
         assert DeviceSensor.get_existing('A0') is None
 
 
 def test_get_device_sensors_when_disabled_freezes_existing_reading(client, app):
+    token = _login(client, app)
+    _enable(client, token)
+
     resp = client.get('/device-sensors/A0')
-    assert resp.status_code == 200
     first = resp.get_json()
     assert first['enabled'] is True
 
-    token = _login(client, app)
     client.put('/device-sensor-settings', json={'enabled': False},
                headers={'Authorization': f'Bearer {token}'})
 
     resp2 = client.get('/device-sensors/A0')
-    assert resp2.status_code == 200
     second = resp2.get_json()
     assert second['enabled'] is False
     assert second['temperature'] == first['temperature']
     assert second['humidity'] == first['humidity']
 
 
-def test_get_device_sensors_when_enabled_still_regenerates(client):
+def test_get_device_sensors_when_enabled_still_regenerates(client, app):
+    token = _login(client, app)
+    _enable(client, token)
+
     resp = client.get('/device-sensors/A0')
     assert resp.status_code == 200
     assert resp.get_json()['enabled'] is True

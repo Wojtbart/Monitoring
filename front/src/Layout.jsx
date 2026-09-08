@@ -32,6 +32,7 @@ import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
 import BoltIcon from "@mui/icons-material/Bolt";
 import NetworkPingIcon from "@mui/icons-material/NetworkPing";
 import { useRealTimeData } from "./RealTimeDataContext";
+import { useLang } from "./translation";
 import "./Layout.css";
 
 const Layout = ({ children }) => {
@@ -41,6 +42,7 @@ const Layout = ({ children }) => {
     const [username, setUsername] = useState("");
     const [isAdmin, setIsAdmin] = useState(false);
     const [now, setNow] = useState(new Date());
+    const { lang, setLang, t } = useLang();
     const navigate = useNavigate();
     const theme = useTheme();
 
@@ -123,7 +125,7 @@ const Layout = ({ children }) => {
         if (isAdmin) {
             navigate("/settings");
         } else {
-            alert("Nie masz uprawnień do tej zakładki");
+            alert(t("no_permission_tab"));
         }
     };
 
@@ -143,7 +145,7 @@ const Layout = ({ children }) => {
         if (isAdmin) {
             navigate("/register-user");
         } else {
-            alert("Nie masz uprawnień do tej zakładki");
+            alert(t("no_permission_tab"));
         }
     };
 
@@ -178,15 +180,23 @@ const Layout = ({ children }) => {
                                 flexGrow: 1, display: "flex", justifyContent: "center", gap: 2.5,
                             }}>
                                 <Typography sx={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.85)" }}>
-                                    Uptime: <strong>{formatUptime(uptimeSeconds)}</strong>
+                                    {t("uptime")}: <strong>{formatUptime(uptimeSeconds)}</strong>
                                 </Typography>
                                 <Typography sx={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.85)" }}>
-                                    Czas: <strong>{now.toLocaleString("pl-PL")}</strong>
+                                    {t("time")}: <strong>{now.toLocaleString(lang === "en" ? "en-GB" : "pl-PL")}</strong>
                                 </Typography>
                             </Box>
+                            <Button
+                                onClick={() => setLang(lang === "pl" ? "en" : "pl")}
+                                variant="outlined" size="small"
+                                title="PL / EN — menu i pasek górny, reszta stron stopniowo"
+                                sx={{ color: "white", borderColor: "rgba(255,255,255,0.5)", minWidth: 0, px: 1.5, mr: 2, gap: 0.5 }}
+                            >
+                                <span>{lang === "pl" ? "🇵🇱" : "🇬🇧"}</span> {lang.toUpperCase()}
+                            </Button>
                             <div className="loggedAs">
                                 <Typography variant="body1">
-                                    Zalogowany jako:{" "}
+                                    {t("logged_as")}:{" "}
                                     <span className="loggedUser">
                                         {username || "---"}
                                     </span>
@@ -197,7 +207,7 @@ const Layout = ({ children }) => {
                                 variant="contained"
                                 color="error"
                             >
-                                Wyloguj
+                                {t("logout")}
                             </Button>
                         </Toolbar>
                     </AppBar>
@@ -218,7 +228,7 @@ const Layout = ({ children }) => {
                             open={openMenu}
                         >
                             <DrawerHeader>
-                                MENU
+                                {t("menu")}
                                 <IconButton onClick={toggleDrawer(false)}>
                                     {theme.direction === "ltr" ? (
                                         <ChevronLeftIcon />
@@ -231,39 +241,39 @@ const Layout = ({ children }) => {
                             <List>
                                 <ListItemButton onClick={handleFloorPlan}>
                                     <ListItemIcon><HomeIcon /></ListItemIcon>
-                                    <ListItemText primary="Strona główna" />
+                                    <ListItemText primary={t("nav_home")} />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleHome}>
                                     <ListItemIcon><NetworkPingIcon /></ListItemIcon>
-                                    <ListItemText primary="Test urządzenia" />
+                                    <ListItemText primary={t("nav_test_device")} />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleSavedVideos}>
                                     <ListItemIcon><SaveAltIcon /></ListItemIcon>
-                                    <ListItemText primary="Zapisane wideo" />
+                                    <ListItemText primary={t("nav_saved_videos")} />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleCamera}>
                                     <ListItemIcon><VideocamIcon /></ListItemIcon>
-                                    <ListItemText primary="Widok z kamery" />
+                                    <ListItemText primary={t("nav_camera")} />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleSettings}>
                                     <ListItemIcon><SettingsIcon /></ListItemIcon>
-                                    <ListItemText primary="Ustawienia systemu" />
+                                    <ListItemText primary={t("nav_settings")} />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleRegister}>
                                     <ListItemIcon><PersonAddIcon /></ListItemIcon>
-                                    <ListItemText primary="Dodaj użytkownika" />
+                                    <ListItemText primary={t("nav_register")} />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleLogs}>
                                     <ListItemIcon><NewspaperIcon /></ListItemIcon>
-                                    <ListItemText primary="Logi z systemu" />
+                                    <ListItemText primary={t("nav_logs")} />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleVoltage}>
                                     <ListItemIcon><BoltIcon /></ListItemIcon>
-                                    <ListItemText primary="Napięcie zasilania UPS" />
+                                    <ListItemText primary={t("nav_voltage")} />
                                 </ListItemButton>
                                 <ListItemButton onClick={handleHelp}>
                                     <ListItemIcon><HelpOutlineIcon /></ListItemIcon>
-                                    <ListItemText primary="Pomoc" />
+                                    <ListItemText primary={t("nav_help")} />
                                 </ListItemButton>
                             </List>
                             <Divider />

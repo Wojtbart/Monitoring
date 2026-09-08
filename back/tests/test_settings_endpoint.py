@@ -72,3 +72,25 @@ def test_update_settings_can_enable_auto_save_layout(client, app):
 
     updated = client.get('/settings').get_json()['settings'][0]
     assert updated['auto_save_layout'] is True
+
+
+def test_get_settings_defaults_recording_on_motion_enabled_to_true(client, app):
+    _seed_settings(app)
+    settings = client.get('/settings').get_json()['settings'][0]
+    assert settings['recording_on_motion_enabled'] is True
+
+
+def test_update_settings_can_disable_recording_on_motion(client, app):
+    settings_id = _seed_settings(app)
+    token = _login(client, app)
+    app_module.sensor = _FakeSensor()
+
+    resp = client.put(
+        '/settings',
+        json={'id': settings_id, 'recording_seconds': 30, 'recording_on_motion_enabled': False},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert resp.status_code == 200
+
+    updated = client.get('/settings').get_json()['settings'][0]
+    assert updated['recording_on_motion_enabled'] is False

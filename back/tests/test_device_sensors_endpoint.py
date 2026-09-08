@@ -1,4 +1,17 @@
-def test_get_device_sensors_returns_reading(client):
+from werkzeug.security import generate_password_hash
+from models import User
+
+
+def _enable(client, app):
+    with app.app_context():
+        User.add_user('boss', generate_password_hash('pw123', method='pbkdf2:sha256'), True)
+    token = client.post('/login', json={'username': 'boss', 'password': 'pw123'}).get_json()['accessToken']
+    client.put('/device-sensor-settings', json={'enabled': True},
+               headers={'Authorization': f'Bearer {token}'})
+
+
+def test_get_device_sensors_returns_reading(client, app):
+    _enable(client, app)
     resp = client.get('/device-sensors/A0')
     assert resp.status_code == 200
     data = resp.get_json()
@@ -7,7 +20,8 @@ def test_get_device_sensors_returns_reading(client):
     assert 'updated_at' in data
 
 
-def test_get_device_sensors_same_rack_returns_updated_reading(client):
+def test_get_device_sensors_same_rack_returns_updated_reading(client, app):
+    _enable(client, app)
     first = client.get('/device-sensors/A0').get_json()
     second = client.get('/device-sensors/A0').get_json()
     assert 10.0 <= second['temperature'] <= 45.0

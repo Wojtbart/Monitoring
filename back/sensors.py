@@ -80,6 +80,7 @@ class Sensor:
     def _apply_settings(self, settings):
         s = settings[0] if settings else {}
         self.recording_seconds = s.get('recording_seconds', 30)
+        self.recording_on_motion_enabled = s.get('recording_on_motion_enabled', True)
 
     def update_settings(self, settings):
         self._apply_settings(settings)
@@ -205,13 +206,13 @@ class Sensor:
         if not self._motion_reader:
             self.motion = False                        # brak podłączonego czujnika PIR — mock wyłączony
         if not self._fire_reader:
-            self.fire = random.random() < 0.01          # mock: 1% szansa
+            self.fire = False                          # brak podłączonego czujnika — mock wyłączony
         if not self._gas_reader:
-            self.gas = random.random() < 0.01          # mock: 1% szansa
+            self.gas = False                           # brak podłączonego czujnika — mock wyłączony
         if not self._door_reader:
-            self.door = random.random() < 0.05        # mock: 5% szansa
+            self.door = False                          # brak podłączonego czujnika — mock wyłączony
         if not self._water_reader:
-            self.water = random.random() < 0.01        # mock: 1% szansa
+            self.water = False                         # brak podłączonego czujnika — mock wyłączony
 
         # temperature/humidity: DHT_BACKEND=dht11/dht22 w .env włącza realny odczyt
         # (patrz dht_sensor.py); None (błąd odczytu — normalne dla DHT) zostawia
@@ -260,6 +261,8 @@ class Sensor:
                 self.fire = not high
 
     def _handle_recording(self):
+        if not self.recording_on_motion_enabled:
+            return
         if self.motion and not self.is_recording and not self.is_user_recording:
             self.video_name = 'Video_' + datetime.now().strftime('Date_%Y_%m_%d_Time_%H_%M_%S')
             self.camera.start_recording()
@@ -267,6 +270,10 @@ class Sensor:
             self.timer = threading.Timer(self.recording_seconds, self._stop_auto_recording)
             self.timer.start()
             print('[sensor] Wykryto ruch — nagrywanie rozpoczęte')
+            from models import Log
+            with self.app.app_context():
+                Log.add_log(datetime.now(), 'Kamera', False,
+                            'Automatyczne nagrywanie rozpoczęte (wykryto ruch)')
 
         elif self.motion and self.is_recording and self.timer and self.timer.is_alive():
             self.timer.cancel()

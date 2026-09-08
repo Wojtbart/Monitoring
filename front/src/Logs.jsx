@@ -15,6 +15,7 @@ import ReportIcon from "@mui/icons-material/Report";
 import WarningIcon from "@mui/icons-material/Warning";
 import DownloadIcon from "@mui/icons-material/Download";
 import DeleteIcon from "@mui/icons-material/Delete";
+import { useLang } from "./translation";
 
 const LOGS_PER_PAGE_OPTIONS = [10, 20, 30, 50];
 const REFRESH_INTERVAL = 10000;
@@ -32,6 +33,7 @@ const categoryColor = (name) => CATEGORY_COLORS[name] || "default";
 
 const Logs = () => {
     const navigate = useNavigate();
+    const { t } = useLang();
     const accessToken = localStorage.getItem("JWT");
 
     const [logs, setLogs] = useState([]);
@@ -80,7 +82,7 @@ const Logs = () => {
     }, [fetchLogs, fetchUserInfo]);
 
     const deleteLogs = async () => {
-        if (!window.confirm("Czy na pewno chcesz usunąć logi?")) return;
+        if (!window.confirm(t("confirm_delete_logs"))) return;
         try {
             await axiosAuth.delete("/logs");
             setLogs([]);
@@ -92,7 +94,7 @@ const Logs = () => {
     };
 
     const deleteSelectedLogs = async () => {
-        if (!window.confirm(`Czy na pewno chcesz usunąć zaznaczone logi (${selectedIds.length})?`)) return;
+        if (!window.confirm(t("confirm_delete_selected").replace("{n}", selectedIds.length))) return;
         try {
             await axiosAuth.delete("/logs", { data: { ids: selectedIds } });
             setLogs(prev => prev.filter(l => !selectedIds.includes(l.id)));
@@ -116,11 +118,11 @@ const Logs = () => {
 
     const downloadLogs = () => {
         const escape = (v) => `"${String(v).replace(/"/g, '""')}"`;
-        const header = ["Data", "Nazwa sensoru", "Typ", "Opis"].map(escape).join(",");
+        const header = [t("col_date"), t("col_sensor_name"), t("col_log_type"), t("col_description")].map(escape).join(",");
         const rows = sortedLogs.map(l => [
             l.log_date,
             l.sensor_name,
-            l.is_warning ? "Ostrzeżenie" : "Raport",
+            l.is_warning ? t("warning_word") : t("report_word"),
             l.log_description,
         ].map(escape).join(","));
         const csv = [header, ...rows].join("\r\n");
@@ -179,7 +181,7 @@ const Logs = () => {
         <Layout>
             <Box sx={{ p: 2 }}>
                 <Typography variant="h4" fontWeight="bold" gutterBottom textAlign="center">
-                    Logi z systemu
+                    {t("nav_logs")}
                 </Typography>
 
                 {/* Toolbar */}
@@ -191,7 +193,7 @@ const Logs = () => {
                         startIcon={<ArrowBackIcon />}
                         sx={{ height: 36 }}
                     >
-                        Strona główna
+                        {t("nav_home")}
                     </Button>
                     <Button
                         variant="contained"
@@ -201,7 +203,7 @@ const Logs = () => {
                         onClick={deleteLogs}
                         sx={{ height: 36 }}
                     >
-                        Usuń logi
+                        {t("delete_logs")}
                     </Button>
                     <Button
                         variant="contained"
@@ -210,7 +212,7 @@ const Logs = () => {
                         onClick={fetchLogs}
                         sx={{ height: 36 }}
                     >
-                        Przeładuj logi
+                        {t("reload_logs")}
                     </Button>
                     <Button
                         variant="outlined"
@@ -220,7 +222,7 @@ const Logs = () => {
                         startIcon={<DownloadIcon />}
                         sx={{ height: 36 }}
                     >
-                        Pobierz logi
+                        {t("download_logs")}
                     </Button>
                     <Button
                         variant="outlined"
@@ -231,33 +233,33 @@ const Logs = () => {
                         startIcon={<DeleteIcon />}
                         sx={{ height: 36 }}
                     >
-                        Usuń zaznaczone ({selectedIds.length})
+                        {t("delete_selected").replace("{n}", selectedIds.length)}
                     </Button>
 
                     <FormControl size="small" sx={{ minWidth: 200, height: 36 }}>
-                        <InputLabel>Sortowanie</InputLabel>
+                        <InputLabel>{t("sorting_label")}</InputLabel>
                         <Select
                             value={sortType}
-                            label="Sortowanie"
+                            label={t("sorting_label")}
                             onChange={handleSortChange}
                             sx={{ height: 36 }}
                         >
-                            <MenuItem value="newest">Data — od najnowszych</MenuItem>
-                            <MenuItem value="oldest">Data — od najstarszych</MenuItem>
-                            <MenuItem value="warnings">Tylko ostrzeżenia</MenuItem>
-                            <MenuItem value="reports">Tylko raporty</MenuItem>
+                            <MenuItem value="newest">{t("sort_newest")}</MenuItem>
+                            <MenuItem value="oldest">{t("sort_oldest")}</MenuItem>
+                            <MenuItem value="warnings">{t("sort_warnings_only")}</MenuItem>
+                            <MenuItem value="reports">{t("sort_reports_only")}</MenuItem>
                         </Select>
                     </FormControl>
 
                     <FormControl size="small" sx={{ minWidth: 200, height: 36 }}>
-                        <InputLabel>Sensor</InputLabel>
+                        <InputLabel>{t("sensor_label")}</InputLabel>
                         <Select
                             value={sensorFilter}
-                            label="Sensor"
+                            label={t("sensor_label")}
                             onChange={handleSensorFilterChange}
                             sx={{ height: 36 }}
                         >
-                            <MenuItem value="all">Wszystkie</MenuItem>
+                            <MenuItem value="all">{t("all_word")}</MenuItem>
                             {sensorOptions.map(name => (
                                 <MenuItem key={name} value={name}>{name}</MenuItem>
                             ))}
@@ -265,10 +267,10 @@ const Logs = () => {
                     </FormControl>
 
                     <FormControl size="small" sx={{ minWidth: 140, height: 36 }}>
-                        <InputLabel>Logów na stronę</InputLabel>
+                        <InputLabel>{t("logs_per_page_label")}</InputLabel>
                         <Select
                             value={logsPerPage}
-                            label="Logów na stronę"
+                            label={t("logs_per_page_label")}
                             onChange={handleLogsPerPageChange}
                             sx={{ height: 36 }}
                         >
@@ -279,7 +281,7 @@ const Logs = () => {
                     </FormControl>
 
                     <Typography variant="caption" color="text.secondary" sx={{ ml: "auto" }}>
-                        {sortedLogs.length} logów · odświeżanie co 10s
+                        {sortedLogs.length} {t("logs_count_suffix")}
                     </Typography>
                 </Box>
 
@@ -296,17 +298,17 @@ const Logs = () => {
                                         onChange={toggleSelectPage}
                                     />
                                 </TableCell>
-                                <TableCell sx={{ fontWeight: "bold", width: 160 }}>Data</TableCell>
-                                <TableCell sx={{ fontWeight: "bold", width: 180 }}>Nazwa sensoru</TableCell>
-                                <TableCell sx={{ fontWeight: "bold", width: 80 }}>Typ logu</TableCell>
-                                <TableCell sx={{ fontWeight: "bold" }}>Opis</TableCell>
+                                <TableCell sx={{ fontWeight: "bold", width: 160 }}>{t("col_date")}</TableCell>
+                                <TableCell sx={{ fontWeight: "bold", width: 180 }}>{t("col_sensor_name")}</TableCell>
+                                <TableCell sx={{ fontWeight: "bold", width: 80 }}>{t("col_log_type")}</TableCell>
+                                <TableCell sx={{ fontWeight: "bold" }}>{t("col_description")}</TableCell>
                             </TableRow>
                         </TableHead>
                         <TableBody>
                             {pageLogs.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={5} align="center" sx={{ py: 4, color: "text.secondary" }}>
-                                        Brak logów
+                                        {t("no_logs")}
                                     </TableCell>
                                 </TableRow>
                             ) : pageLogs.map((log, index) => (
@@ -351,7 +353,7 @@ const Logs = () => {
                         size="small"
                     />
                     <Typography variant="caption" color="text.secondary">
-                        Strona {page} z {totalPages} · {logsPerPage} logów na stronę
+                        {t("page_word")} {page} {t("of_word")} {totalPages} · {logsPerPage} {t("per_page_suffix")}
                     </Typography>
                 </Box>
             </Box>

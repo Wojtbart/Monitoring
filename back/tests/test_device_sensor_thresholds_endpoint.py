@@ -9,6 +9,11 @@ def _login(client, app):
     return resp.get_json()['accessToken']
 
 
+def _enable(client, token):
+    client.put('/device-sensor-settings', json={'enabled': True},
+               headers={'Authorization': f'Bearer {token}'})
+
+
 FULL_PAYLOAD = {
     'min_temperature': 10, 'max_temperature': 30,
     'min_humidity': 25, 'max_humidity': 70,
@@ -19,6 +24,8 @@ FULL_PAYLOAD = {
 
 
 def test_get_device_sensors_includes_thresholds(client, app):
+    token = _login(client, app)
+    _enable(client, token)
     resp = client.get('/device-sensors/A0')
     data = resp.get_json()
     assert data['min_temperature'] == 15.0
@@ -39,8 +46,9 @@ def test_update_thresholds_requires_auth(client, app):
 
 
 def test_update_thresholds_succeeds(client, app):
-    client.get('/device-sensors/A0')
     token = _login(client, app)
+    _enable(client, token)
+    client.get('/device-sensors/A0')
     resp = client.put(
         '/device-sensors/A0/thresholds',
         json=FULL_PAYLOAD,

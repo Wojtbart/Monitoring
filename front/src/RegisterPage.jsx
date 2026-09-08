@@ -15,21 +15,24 @@ import Visibility from "@mui/icons-material/Visibility";
 import VisibilityOff from "@mui/icons-material/VisibilityOff";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import DeleteIcon from "@mui/icons-material/Delete";
+import { useLang } from "./translation";
 
-const PASSWORD_RULES = [
-    { test: p => p.length >= 8,          label: "min. 8 znaków" },
-    { test: p => /[A-Z]/.test(p),        label: "wielka litera" },
-    { test: p => /[a-z]/.test(p),        label: "mała litera" },
-    { test: p => /[0-9]/.test(p),        label: "cyfra" },
-    { test: p => /[^A-Za-z0-9]/.test(p), label: "znak specjalny" },
+const PASSWORD_RULE_DEFS = [
+    { test: p => p.length >= 8,          key: "pw_rule_min_len" },
+    { test: p => /[A-Z]/.test(p),        key: "pw_rule_uppercase" },
+    { test: p => /[a-z]/.test(p),        key: "pw_rule_lowercase" },
+    { test: p => /[0-9]/.test(p),        key: "pw_rule_digit" },
+    { test: p => /[^A-Za-z0-9]/.test(p), key: "pw_rule_special" },
 ];
 
-const getStrength = (p) => PASSWORD_RULES.filter(r => r.test(p)).length;
+const getStrength = (p) => PASSWORD_RULE_DEFS.filter(r => r.test(p)).length;
 
-const STRENGTH_LABELS = ["", "Bardzo słabe", "Słabe", "Średnie", "Silne", "Bardzo silne"];
+const STRENGTH_KEYS = ["", "strength_very_weak", "strength_weak", "strength_medium", "strength_strong", "strength_very_strong"];
 const STRENGTH_COLORS = ["", "#f44336", "#ff9800", "#ffc107", "#4caf50", "#2e7d32"];
 
 const RegisterPage = () => {
+    const { t } = useLang();
+    const PASSWORD_RULES = PASSWORD_RULE_DEFS.map(r => ({ ...r, label: t(r.key) }));
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [isAdmin, setIsAdmin] = useState(false);
@@ -58,14 +61,14 @@ const RegisterPage = () => {
     }, []);
 
     const handleDeleteUser = async (userId, username) => {
-        if (!window.confirm(`Usunąć użytkownika "${username}"?`)) return;
+        if (!window.confirm(t("confirm_delete_user").replace("{u}", username))) return;
         try {
             await axios.delete(`${API_BASE}/users/${userId}`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
             fetchUsers();
         } catch (error) {
-            setStatus({ type: "error", message: error.response?.data?.message || "Błąd usuwania użytkownika." });
+            setStatus({ type: "error", message: error.response?.data?.message || t("user_delete_error") });
         }
     };
 
@@ -76,11 +79,11 @@ const RegisterPage = () => {
 
     const handleRegister = async () => {
         if (!username.trim() || !password.trim()) {
-            setStatus({ type: "error", message: "Wypełnij wszystkie pola." });
+            setStatus({ type: "error", message: t("fill_all_fields") });
             return;
         }
         if (!passwordValid) {
-            setStatus({ type: "error", message: `Hasło nie spełnia wymagań: ${failedRules.map(r => r.label).join(", ")}.` });
+            setStatus({ type: "error", message: `${t("password_reqs_prefix")} ${failedRules.map(r => r.label).join(", ")}.` });
             return;
         }
         setLoading(true);
@@ -91,13 +94,13 @@ const RegisterPage = () => {
                 { username, password, isAdmin },
                 { headers: { Authorization: `Bearer ${accessToken}` } },
             );
-            setStatus({ type: "success", message: `Użytkownik "${username}" został dodany.` });
+            setStatus({ type: "success", message: t("user_added_success").replace("{u}", username) });
             setUsername("");
             setPassword("");
             setIsAdmin(false);
             fetchUsers();
         } catch (error) {
-            setStatus({ type: "error", message: error.response?.data?.message || "Błąd serwera." });
+            setStatus({ type: "error", message: error.response?.data?.message || t("server_error") });
         }
         setLoading(false);
     };
@@ -115,10 +118,10 @@ const RegisterPage = () => {
                         <PersonAddIcon sx={{ color: "white", fontSize: "1.8rem" }} />
                         <Box>
                             <Typography variant="h6" fontWeight="bold" color="white">
-                                Dodaj użytkownika
+                                {t("nav_register")}
                             </Typography>
                             <Typography variant="caption" sx={{ color: "#9fa8da" }}>
-                                Tylko administrator może dodawać konta
+                                {t("admin_only_note")}
                             </Typography>
                         </Box>
                     </Box>
@@ -136,7 +139,7 @@ const RegisterPage = () => {
                         )}
 
                         <TextField
-                            label="Nazwa użytkownika"
+                            label={t("username_field")}
                             value={username}
                             onChange={e => setUsername(e.target.value)}
                             fullWidth
@@ -153,7 +156,7 @@ const RegisterPage = () => {
                         />
 
                         <TextField
-                            label="Hasło"
+                            label={t("password_label")}
                             value={password}
                             onChange={e => setPassword(e.target.value)}
                             type={showPassword ? "text" : "password"}
@@ -191,7 +194,7 @@ const RegisterPage = () => {
                                         }}
                                     />
                                     <Typography variant="caption" sx={{ color: STRENGTH_COLORS[strength], fontWeight: "bold", minWidth: 90 }}>
-                                        {STRENGTH_LABELS[strength]}
+                                        {t(STRENGTH_KEYS[strength])}
                                     </Typography>
                                 </Box>
                                 <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
@@ -225,7 +228,7 @@ const RegisterPage = () => {
                                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
                                     <AdminPanelSettingsIcon fontSize="small" color={isAdmin ? "warning" : "disabled"} />
                                     <Typography variant="body2" color={isAdmin ? "warning.main" : "text.secondary"} fontWeight={isAdmin ? "bold" : "normal"}>
-                                        Uprawnienia administratora
+                                        {t("admin_permissions_label")}
                                     </Typography>
                                 </Box>
                             }
@@ -233,7 +236,7 @@ const RegisterPage = () => {
 
                         {isAdmin && (
                             <Alert severity="warning" sx={{ py: 0.5 }}>
-                                Administrator ma dostęp do wszystkich funkcji systemu.
+                                {t("admin_warning")}
                             </Alert>
                         )}
 
@@ -245,7 +248,7 @@ const RegisterPage = () => {
                             startIcon={<PersonAddIcon />}
                             sx={{ py: 1.2, fontWeight: "bold", bgcolor: "#1a237e", "&:hover": { bgcolor: "#283593" } }}
                         >
-                            {loading ? "Dodawanie..." : "Dodaj użytkownika"}
+                            {loading ? t("adding_ellipsis") : t("nav_register")}
                         </Button>
                     </Box>
                 </Card>
@@ -253,13 +256,13 @@ const RegisterPage = () => {
                 <Card sx={{ width: 420, mt: 3, borderRadius: 3, overflow: "hidden", boxShadow: 4 }}>
                     <Box sx={{ bgcolor: "#1a237e", px: 4, py: 2 }}>
                         <Typography variant="h6" fontWeight="bold" color="white">
-                            Użytkownicy
+                            {t("users_header")}
                         </Typography>
                     </Box>
                     <Box sx={{ px: 2, py: 1.5 }}>
                         {users.length === 0 && (
                             <Typography variant="body2" color="text.secondary" sx={{ px: 1, py: 2 }}>
-                                Brak użytkowników.
+                                {t("no_users")}
                             </Typography>
                         )}
                         {users.map((u, i) => (
@@ -285,7 +288,7 @@ const RegisterPage = () => {
                                     <Box>
                                         <Typography variant="body2" fontWeight={600}>{u.username}</Typography>
                                         <Chip
-                                            label={u.isadmin ? "Admin" : "Użytkownik"}
+                                            label={u.isadmin ? "Admin" : t("user_badge")}
                                             size="small"
                                             sx={{
                                                 height: 18, fontSize: "0.62rem", fontWeight: "bold", mt: 0.25,
